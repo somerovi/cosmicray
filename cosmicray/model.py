@@ -45,10 +45,10 @@ class Model(object):
     def update_payload(self):
         return self.as_dict()
 
-    def set_params(self, **kwargs):
+    def params(self, **kwargs):
         return self.__get_route().params(**kwargs)
 
-    def set_url_args(self, **kwargs):
+    def url_args(self, **kwargs):
         return self.__get_route().url_args(**kwargs)
 
     def get(self):

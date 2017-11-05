@@ -2,10 +2,14 @@
 
 
 ```python
+
+import cosmicray
+
+
 def authenticate(request):
     ...
 
-api = Route()
+api = cosmicray.Route()
 
 api.configure(
     domain='http://localhost:8080',
@@ -20,7 +24,7 @@ def users(request):
     return request.map_model(request.response.json().get('users'))
 
 
-class Users(Model):
+class Users(cosmicray.Model):
     __fields__ = [
         'id',
         'username',
