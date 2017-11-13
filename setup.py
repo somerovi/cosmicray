@@ -15,7 +15,7 @@ AUTHOR = 'Samir Omerovic'
 EMAIL = 'somerovi@gmail.com'
 URL = 'https://github.com/somerovi/cosmicray'
 NAME = 'cosmicray'
-SUMMARY = "Develop a client for your http api and document its quirks and features"
+SUMMARY = "Develop a client for your HTTP API and document its quirks and features"
 DESCRIPTION = ''
 PACKAGES = ['cosmicray']
 REQUIRED = [
@@ -59,10 +59,12 @@ class UploadCommand(Command):
             pass
 
         self.status('Building Source and Wheel (universal) distribution…')
-        os.system('{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
+        cmd = '{0} setup.py sdist bdist_wheel --universal'.format(sys.executable)
+        os.system(cmd)
 
+        twine = sys.executable.replace('python', 'twine')
         self.status('Uploading the package to PyPi via Twine…')
-        os.system('twine upload dist/*')
+        os.system('{0} upload dist/*'.format(twine))
 
         sys.exit()
 

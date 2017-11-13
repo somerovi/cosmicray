@@ -37,7 +37,7 @@ class Config(object):
 
     def update(self, from_dict=None, **kwargs):
         self._config.update(
-            _keys_to_upper(from_dict or {}), _keys_to_upper(kwargs))
+            _keys_to_upper(from_dict or {}), **_keys_to_upper(kwargs))
 
     def copy(self):
         return Config(copy.deepcopy(self._config))

@@ -51,7 +51,7 @@ def authenticator(request):
     if not request.is_request_for(auth):
         auth = auth(json={'username': 'me', 'password': 'mysecret'}).post()
         return request.set_headers({'X-AUTH-TOKEN': auth['token']})
-
+    return request
 
 @api.route('/auth', ['POST'])
 def auth(request):
