@@ -13,6 +13,15 @@ def param(name, value=None, required=False):
     return QueryParam(name=name, value=value, required=required)
 
 
+def cached_artifact(f):
+    __cached = {}
+    def decorated(fpath):
+        if fpath not in __cached:
+            __cached[fpath] = f(fpath)
+        return __cached[fpath]
+    return decorated
+
+
 def user_home(*args):
     home = os.path.expanduser("~")
     return os.path.join(home, *args)
@@ -29,7 +38,7 @@ def write_artifact_file(fpath, data):
     with codecs.open(fpath, 'w', 'utf-8') as fobj:
         fobj.write(data)
 
-
+@cached_artifact
 def read_artifact_file(fpath):
     with codecs.open(fpath, 'r', 'utf-8') as fobj:
         return fobj.read()

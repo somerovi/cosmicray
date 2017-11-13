@@ -11,7 +11,7 @@ defining enpoints, handling requests responses and automatically converting them
 >>> from cosmicray import Cosmicray
 >>>
 >>> api = Cosmicray('cosmicray/myapp')
->>> api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
+>>> @api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
 >>> def coolstuff(request):
 ...     return request.response.json()
 >>> coolstuff(json={'name': 'magic'}).post()
