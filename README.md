@@ -1,63 +1,97 @@
-# cosmicray
+# Cosmicray
+###### Develop a client for your http API and document its quirks and features
 
+Cosmicray is a http client API development framework. It provides the basic building blocks for
+defining enpoints, handling requests responses and automatically converting them to Models.
+
+
+### Basics: Defining routes and route handlers and making requests
 
 ```python
+>>> from cosmicray import Cosmicray
+>>>
+>>> api = Cosmicray('cosmicray/myapp')
+>>> api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
+>>> def coolstuff(request):
+...     return request.response.json()
+>>> coolstuff(json={'name': 'magic'}).post()
+{'id': 12345}
+>>> coolstuff(urlargs={'id': 12345}).get()
+{'id': 12345, 'name': 'magic'}
+>>> coolstuff(urlargs={'id': 12345}, json={'name': 'black magic'}).put()
+{'id': 12345, 'name': 'black magic'}
+>>> coolstuff(urlargs={'id': 12345}).delete()
+{'id': 12345, 'name': 'black magic'}
+```
 
-import cosmicray
+### Basics: Customizing request
+
+```python
+>>> coolstuff(urlargs={'id': 12345},
+...           headers={'Content-Type': 'application/json'},
+...           params={'debug': True}).get()
+```
+
+You can also pass in keyword arguments for the `requests` module:
+
+```python
+>>> coolstuff(urlargs={'id': 12345},
+...           headers={'Content-Type': 'application/json'},
+...           params={'debug': True},
+...           json={'name': 'white magic'}).put()
+```
+
+### Basics: Authenticating requests
+
+Most often before you can access resources, you'll need to authenticate and pass authentication
+parameters to each request. Cosmicray has you covered!
+
+```python
+def authenticator(request):
+    if not request.is_request_for(auth):
+        auth = auth(json={'username': 'me', 'password': 'mysecret'}).post()
+        return request.set_headers({'X-AUTH-TOKEN': auth['token']})
 
 
-def authenticate(request):
-    ...
+@api.route('/auth', ['POST'])
+def auth(request):
+    return request.response.json()
 
-api = cosmicray.Route()
+@api.route('/private/resource', ['GET'])
+def private_resource(request):
+    return request.response.json()
 
-api.configure(
-    domain='http://localhost:8080',
-    domain_env_var='MYAPIENVVAR',
-    testing=False,
-    auth=('samir', 'superdupersecret'),
-    authenticate=authenticate
-)
+api.configure(authenticator)
 
-@api.route_handler('/v1/users{id}', methods=['GET'])
-def users(request):
-    return request.map_model(request.response.json().get('users'))
+# Now the private resourse will be automatically updated to include auth headers
+private_resource.get()
+```
 
+### Models
 
-class Users(cosmicray.Model):
-    __fields__ = [
-        'id',
-        'username',
-        'password'
-    ]
+```python
+>>> from cosmicray import Model
+>>>
+>>> class CoolStuff(Model):
+...     __route__ = coolstuff
+...     __fields__ = [
+...         'id',
+...         'name'
+...     ]
+>>> obj = CoolStuff(name="Magic")
+>>> obj
+<CoolStuff(id=None, name='magic')>
+>>> obj.create()
+```
 
-    __route__ = users
+If you don't want to use `cosmicray.Model` as your base, you can define your own OR
+even use just use `collections.namedtuple` as the model.
 
-    User = collections.namedtuple('User', __fields__ + ['firstname', 'lastname'])
-
-    def get(self):
-        if self.id:
-            return self.__route__(Users.User).url_args(id=self.id).get()
-        return super(Users, self).get()
-
-
->>> api.routes
-["<RouteHandler for '/v1/users/{id}'>"]
->>> api.routes.users.path
-'/v1/users/{id}'
->>> api.routes.users.__doc__
-'
-Help on users
-....
-'
->>> users.get()
-[{'id': 12345, 'username': 'foo@example.com', 'password': 'supersecure'}, ...]
->>> users.url_args(id=12345).get()
-{'id': 12345, 'username': 'foo@example.com', 'password': 'supersecure', 'firstname': 'Foo', 'lastname': 'Bar'}
->>> users = api.routes.users(User).get()
->>> users
-[Users(id=12345, username='foo@example.com', password='supersecure'), ... ]
->>> foo = users[0]
->>> foo.get()
-User(id=12345, username='foo@example.com', password='supersecure', firstname='Foo', lastname='Bar')
+```python
+>>> class MyModel(object):
+...     @classmethod
+...     def _make(cls, response):
+...         obj = cls()
+...         ... do stuff with the response
+...         return obj
 ```

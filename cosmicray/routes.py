@@ -1,65 +1,87 @@
-import collections
-import os
+# -*- coding: utf-8 -*-
+
+
 import string
 
 import requests
 
-
-QueryParam = collections.namedtuple('QueryParam', ['name', 'value', 'required'])
-
-def param(name, value=None, required=False):
-    return QueryParam(name=name, value=value, required=required)
+from . import config
+from . import util
 
 
-class Route(object):
+class Cosmicray(object):
     '''
-    Base for all route handling
+    >>> api = Cosmicray('cosmicray/myapp')
     '''
-    def __init__(self, name):
+    def __init__(self, name, domain='http://localhost:8080'):
+        '''
+        :param name: App name and User-Agent header
+        :param domain: Domain name. Default: http://localhost:8080
+        '''
         self.name = name
         self.routes = []
-        self.config = {
-            'domain': 'http://localhost:8080',
-            'headers': requests.utils.default_headers()
-        }
-        self.config['headers'].update({'User-Agent': self.name})
+        self.config = config.Config({
+            'domain': domain,
+            'headers': {'User-Agent': self.name},
+            'extra_args': {}
+        })
+        self.authenticator = None
 
-    def route_handler(self, path, methods, params=None):
+    def route(self, path, methods, params=None, urlargs=None):
+        '''Decorator @route(path, methods, headers, params, urlargs)
+
+        >>> api = Cosmicray('cosmicray/myapp')
+        >>> api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
+        >>> def coolstuff(request):
+        >>>     return request.response.json()
+        >>> coolstuff(json={'name': 'magic'}).post()
+        {'id': 12345}
+        >>> coolstuff(urlargs={'id': 12345}).get()
+        {'id': 12345, 'name': 'magic'}
+        >>> coolstuff(urlargs={'id': 12345}, json={'name': 'black magic'}).put()
+        {'id': 12345, 'name': 'black magic'}
+        >>> coolstuff(urlargs={'id': 12345}).delete()
+        {'id': 12345, 'name': 'black magic'}
+
+        :param path: Uri of type str or string formatter.
+        :param methods: list of all allowed methods
+        :param params: list of query parameters of type cosmicray.util.QueryParam
+        :param urlargs: list of required url arguments
+        :returns decorates the given function
         '''
-        Decorator
-        @route_handler(path, methods, headers, params)
-        '''
-        handler = RouteHandler(self, path, methods, params)
+        handler = RouteHandler(self, path, methods, params, urlargs)
         self.routes.append(handler)
         return handler.decorate
 
-    def configure(self, domain, headers=None, auth=None):
+    def configure(self, domain, headers=None, authenticator=None, **kwargs):
         '''
-        Route.configure(
-            domain='http://localhost:8080',
-            domain_env_var='APIV3'
-        )
+        :param domain: Set the domain name that the app will use
+        :param headers: Set any headers that all requests must have
+        :param authentiator: Callback to authenticate each request
+            >>> def authenticator(request):
+            >>>     auth = my_custom_auth_function( ... )
+            >>>     return request.set_headers({'X-AUTH-TOKEN': auth['token']})
+        :param **kwargs: Globally configure the underlying module used for
+            making requests, which in this case it is `requests`
         '''
-        self.config['domain'] = domain
-        if headers:
-            self.config['headers'].update(headers)
-
-    def get_headers(self):
-        return dict(self.config['headers'])
-
-    def get_domain(self):
-        return self.config['domain']
+        self.config.update({
+            'domain': domain,
+            'headers': headers or {},
+            'extra_args': kwargs
+        })
+        self.authenticator = authenticator
 
     def __repr__(self):
         return '<Route for {name}>'.format(name=self.name)
 
 
 class RouteHandler(object):
-    def __init__(self, route, path, methods, params):
-        self.route = route
+    def __init__(self, app, path, methods, params, urlargs):
+        self.app = app
         self.path = path
         self.methods = methods
         self.params = params
+        self.urlargs = urlargs
         self.response_handler = None
 
     def decorate(self, response_handler):
@@ -71,33 +93,60 @@ class RouteHandler(object):
 
     @property
     def url(self):
+        domain = self.app.config['domain']
         return '{domain}/{path}'.format(
-            domain=self.route.get_domain().rstrip('/'),
+            domain=domain.rstrip('/'),
             path=self.path.lstrip('/'))
 
+    def authenticate(self, request):
+        if self.app.authenticator:
+            return self.app.authenticator(request)
+        return request
+
     def get_headers(self):
-        return self.route.get_headers()
+        return self.app.config.getcopy('headers')
 
-    def __call__(self, model):
-        return Request(self).model(model)
+    def get_extra_args(self):
+        return self.app.config.getcopy('extra_args')
 
-    def model(self, model):
-        return Request(self).model(model)
+    def __eq__(self, obj):
+        return self.path == obj.path
 
-    def params(self, **params):
-        return Request(self).params(**params)
+    def __call__(self, model_cls=None, urlargs=None, **requests_args):
+        return Request(self).set(model_cls, urlargs, **requests_args)
 
-    def headers(self, **headers):
-        return Request(self).headers(**headers)
+    def set_model(self, model_cls):
+        return Request(self).set_model(model_cls)
 
-    def url_args(self, **kwargs):
-        return Request(self).url_args(**kwargs)
+    def set_params(self, **kwargs):
+        return Request(self).set_params(**kwargs)
 
-    def json(self, payload):
-        return Request(self).json(payload)
+    def set_headers(self, **kwargs):
+        return Request(self).set_headers(**kwargs)
+
+    def set_urlargs(self, **kwargs):
+        return Request(self).set_urlargs(**kwargs)
+
+    def set_payload(self, data=None, json=None):
+        return Request(self).set_payload(data, json)
 
     def get(self):
         return Request(self).get()
+
+    def delete(self):
+        return Request(self).delete()
+
+    def post(self):
+        return Request(self).post()
+
+    def put(self):
+        return Request(self).put()
+
+    def head(self):
+        return Request(self).head()
+
+    def options(self):
+        return Request(self).options()
 
     def __repr__(self):
         return '<RouteHandler for {path!r}>'.format(path=self.path)
@@ -108,36 +157,54 @@ class Request(object):
         self.handler = handler
         self.requests_args = {
             'params': {},
-            'auth': None,
             'json': None,
             'data': None,
             'headers': handler.get_headers(),
         }
-        self._url_args = {}
-        self._model = None
+        self.requests_args.update(handler.get_extra_args())
+        self.urlargs = {}
+        self.model_cls = None
         self.response = None
 
-    def model(self, model):
-        self._model = model
-        args = model.as_dict()
-        self.url_args(**args)
+    def is_request_for(self, *route_handlers):
+        return any(self.handler == handler for handler in route_handlers)
+
+    def set(self, model_cls=None, urlargs=None, **kwargs):
+        self.set_model(model_cls)
+        self.set_urlargs(urlargs)
+        self.requests_args.update(**kwargs)
         return self
 
-    def url_args(self, **url_args):
-        self._url_args.update(url_args)
+    def set_model(self, model_cls):
+        if model_cls is not None:
+            self.model_cls = model_cls
+            if not isinstance(model_cls, type):
+                self.set_urlargs(**model_cls.dict)
         return self
 
-    def headers(self, **headers):
-        self.requests['headers'].update(headers)
+    def set_urlargs(self, from_dict_obj=None,  **kwargs):
+        self.urlargs.update(
+            from_dict_obj or {}, **kwargs)
         return self
 
-    def params(self, **params):
-        self.requests_args['params'].update(params)
+    def set_headers(self, from_dict_obj=None, **kwargs):
+        self.requests_args['headers'].update(
+            from_dict_obj or {}, **kwargs)
         return self
 
-    def json(self, payload):
-        self.requests_args['json'] = payload
+    def set_params(self, from_dict_obj=None, **kwargs):
+        self.requests_args['params'].update(
+            from_dict_obj or {}, **kwargs)
         return self
+
+    def set_payload(self, data=None, json=None):
+        self.requests_args.update({'data': data, 'json': json})
+        return self
+
+    def validate_method(self, method):
+        if method not in self.handler.methods:
+            raise TypeError('Method {!r} is not supported by {!}'.format(
+                method, self.handler))
 
     def validate_params(self):
         if self.handler.params:
@@ -154,8 +221,8 @@ class Request(object):
                     self.handler, ', '.join(missing)))
 
     def map_model(self, data):
-        if self._model:
-            _make = getattr(self._model, '_make')
+        if self.model_cls is not None:
+            _make = getattr(self.model_cls, '_make')
             try:
                 return _make(data)
             except TypeError:
@@ -163,10 +230,17 @@ class Request(object):
         return data
 
     def request(self, method):
-        url = DefaultUrlFormatter().format(self.handler.url, **self._url_args)
+        self.validate_params()
+        self.validate_method(method)
+        self.handler.authenticate(self)
+        url = DefaultUrlFormatter().format(self.handler.url, **self.urlargs)
         request = getattr(requests, method.lower())
         response = request(url, **self.requests_args)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except Exception as error:
+            print(response.text)
+            raise error
         self.response = response
         return self
 
@@ -182,20 +256,28 @@ class Request(object):
     def put(self):
         return self.handler.handle_response(self.request('PUT'))
 
+    def head(self):
+        return self.handler.handle_response(self.request('HEAD'))
+
+    def options(self):
+        return self.handler.handle_response(self.request('OPTIONS'))
+
     def __repr__(self):
-        return '<Request for {}>'.format(self.handler.uri)
+        return '<Request for {}>'.format(self.handler.path)
 
 
 class DefaultUrlFormatter(string.Formatter):
     def __init__(self, required=None, *args, **kwargs):
-        super(DefaultFormatter, self).__init__(*args, **kwargs)
+        super(DefaultUrlFormatter, self).__init__(*args, **kwargs)
         self.required = required
 
     def get_value(self, key, args, kwargs):
         if isinstance(key, basestring):
             try:
                 return kwargs[key]
-            except KeyError:
+            except KeyError as error:
+                if self.required and key not in self.required:
+                    raise KeyError(
+                        'Missing required url argument: {}'.format(key))
                 return ''
-        else:
-            return Formatter.get_value(key, args, kwargs)
+        return Formatter.get_value(key, args, kwargs)
