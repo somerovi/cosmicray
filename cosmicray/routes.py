@@ -272,12 +272,11 @@ class DefaultUrlFormatter(string.Formatter):
         self.required = required
 
     def get_value(self, key, args, kwargs):
-        if isinstance(key, basestring):
-            try:
-                return kwargs[key]
-            except KeyError as error:
-                if self.required and key not in self.required:
-                    raise KeyError(
-                        'Missing required url argument: {}'.format(key))
-                return ''
+        try:
+            return kwargs[key]
+        except KeyError as error:
+            if self.required and key not in self.required:
+                raise KeyError(
+                    'Missing required url argument: {}'.format(key))
+            return ''
         return Formatter.get_value(key, args, kwargs)

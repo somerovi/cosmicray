@@ -1,13 +1,21 @@
-# Cosmicray
-###### Develop a client for your http API and document its quirks and features
+Cosmicray
+=========
+
+.. image:: cosmicray.png
+
+------------------------------------------------------------------------
+ Develop a client for your http API and document its quirks and features
+------------------------------------------------------------------------
 
 Cosmicray is a http client API development framework. It provides the basic building blocks for
 defining enpoints, handling requests responses and automatically converting them to Models.
 
 
-### Basics: Defining routes and route handlers and making requests
+Basics: Defining routes and route handlers and making requests
+--------------------------------------------------------------
 
-```python
+.. code:: python
+
 >>> from cosmicray import Cosmicray
 >>>
 >>> api = Cosmicray('cosmicray/myapp')
@@ -22,56 +30,63 @@ defining enpoints, handling requests responses and automatically converting them
 {'id': 12345, 'name': 'black magic'}
 >>> coolstuff(urlargs={'id': 12345}).delete()
 {'id': 12345, 'name': 'black magic'}
-```
 
-### Basics: Customizing request
+::
 
-```python
+Basics: Customizing request
+---------------------------
+
+.. code:: python
+
 >>> coolstuff(urlargs={'id': 12345},
 ...           headers={'Content-Type': 'application/json'},
 ...           params={'debug': True}).get()
-```
+::
 
 You can also pass in keyword arguments for the `requests` module:
 
-```python
+.. code:: python
+
 >>> coolstuff(urlargs={'id': 12345},
 ...           headers={'Content-Type': 'application/json'},
 ...           params={'debug': True},
-...           json={'name': 'white magic'}).put()
-```
+...           json={'name': 'white magic'},
+...           verify=False).put()
+::
 
-### Basics: Authenticating requests
+Basics: Authenticating requests
+-----------------------------------
 
 Most often before you can access resources, you'll need to authenticate and pass authentication
 parameters to each request. Cosmicray has you covered!
 
-```python
-def authenticator(request):
-    if not request.is_request_for(auth):
-        auth = auth(json={'username': 'me', 'password': 'mysecret'}).post()
-        return request.set_headers({'X-AUTH-TOKEN': auth['token']})
-    return request
+.. code:: python
 
-@api.route('/auth', ['POST'])
-def auth(request):
-    return request.response.json()
+>>> def authenticator(request):
+...     if not request.is_request_for(auth):
+...         auth = auth(json={'username': 'me', 'password': 'mysecret'}).post()
+...         return request.set_headers({'X-AUTH-TOKEN': auth['token']})
+...     return request
+>>> @api.route('/auth', ['POST'])
+... def auth(request):
+...     return request.response.json()
+>>> @api.route('/private/resource', ['GET'])
+... def private_resource(request):
+...     return request.response.json()
+>>> api.configure(authenticator)
+>>> # Now the private resourse will be automatically updated to include auth headers
+>>> private_resource.get()
 
-@api.route('/private/resource', ['GET'])
-def private_resource(request):
-    return request.response.json()
+::
 
-api.configure(authenticator)
+Models
+------
 
-# Now the private resourse will be automatically updated to include auth headers
-private_resource.get()
-```
+Use models to bind all the routes together.
 
-### Models
+.. code:: python
 
-```python
 >>> from cosmicray import Model
->>>
 >>> class CoolStuff(Model):
 ...     __route__ = coolstuff
 ...     __fields__ = [
@@ -82,16 +97,19 @@ private_resource.get()
 >>> obj
 <CoolStuff(id=None, name='magic')>
 >>> obj.create()
-```
+
+::
 
 If you don't want to use `cosmicray.Model` as your base, you can define your own OR
 even use just use `collections.namedtuple` as the model.
 
-```python
+.. code:: python
+
 >>> class MyModel(object):
 ...     @classmethod
 ...     def _make(cls, response):
 ...         obj = cls()
 ...         ... do stuff with the response
 ...         return obj
-```
+
+::
