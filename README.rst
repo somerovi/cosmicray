@@ -20,8 +20,8 @@ Basics: Defining routes and route handlers and making requests
 >>>
 >>> api = Cosmicray('cosmicray/myapp')
 >>> @api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
->>> def coolstuff(request):
-...     return request.response.json()
+>>> def coolstuff(response):
+...     return response.json()
 >>> coolstuff(json={'name': 'magic'}).post()
 {'id': 12345}
 >>> coolstuff(urlargs={'id': 12345}).get()
@@ -68,11 +68,11 @@ parameters to each request. Cosmicray has you covered!
 ...         return request.set_headers({'X-AUTH-TOKEN': auth['token']})
 ...     return request
 >>> @api.route('/auth', ['POST'])
-... def auth(request):
-...     return request.response.json()
+... def auth(response):
+...     return response.json()
 >>> @api.route('/private/resource', ['GET'])
-... def private_resource(request):
-...     return request.response.json()
+... def private_resource(response):
+...     return response.json()
 >>> api.configure(authenticator)
 >>> # Now the private resourse will be automatically updated to include auth headers
 >>> private_resource.get()

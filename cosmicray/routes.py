@@ -88,8 +88,18 @@ class RouteHandler(object):
         self.response_handler = response_handler
         return self
 
-    def handle_response(self, *args):
-        return self.response_handler(*args)
+    def handle_response(self, model_cls, response):
+        return self.map_model(
+            model_cls, self.response_handler(response))
+
+    def map_model(self, model_cls, data):
+        if model_cls is not None:
+            _make = getattr(model_cls, '_make')
+            try:
+                return _make(data)
+            except TypeError:
+                return map(_make, data)
+        return data
 
     @property
     def url(self):
@@ -220,15 +230,6 @@ class Request(object):
                 raise ValueError('{!r} requires query parameters: {}'.format(
                     self.handler, ', '.join(missing)))
 
-    def map_model(self, data):
-        if self.model_cls is not None:
-            _make = getattr(self.model_cls, '_make')
-            try:
-                return _make(data)
-            except TypeError:
-                return map(_make, data)
-        return data
-
     def request(self, method):
         self.validate_params()
         self.validate_method(method)
@@ -241,26 +242,31 @@ class Request(object):
         except Exception as error:
             print(response.text)
             raise error
-        self.response = response
-        return self
+        return response
 
     def get(self):
-        return self.handler.handle_response(self.request('GET'))
+        return self.handler.handle_response(
+            self.model_cls, self.request('GET'))
 
     def delete(self):
-        return self.handler.handle_response(self.request('DELETE'))
+        return self.handler.handle_response(
+            self.model_cls, self.request('DELETE'))
 
     def post(self):
-        return self.handler.handle_response(self.request('POST'))
+        return self.handler.handle_response(
+            self.model_cls, self.request('POST'))
 
     def put(self):
-        return self.handler.handle_response(self.request('PUT'))
+        return self.handler.handle_response(
+            self.model_cls, self.request('PUT'))
 
     def head(self):
-        return self.handler.handle_response(self.request('HEAD'))
+        return self.handler.handle_response(
+            self.model_cls, self.request('HEAD'))
 
     def options(self):
-        return self.handler.handle_response(self.request('OPTIONS'))
+        return self.handler.handle_response(
+            self.model_cls, self.request('OPTIONS'))
 
     def __repr__(self):
         return '<Request for {}>'.format(self.handler.path)
