@@ -59,7 +59,8 @@ class Model(object):
         return self.get_route().set_urlargs(from_dict_obj, **kwargs)
 
     def get_route(self):
-        return self.__route__(model_cls=self)
+        return self.__route__(
+            model_cls=self.__class__, urlargs=self.dict)
 
     def get(self):
         return self.get_route().get()

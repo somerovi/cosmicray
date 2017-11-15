@@ -23,7 +23,7 @@ class Cosmicray(object):
         self.config = config.Config({
             'domain': domain,
             'headers': {'User-Agent': self.name},
-            'extra_args': {}
+            'requests_kwargs': {}
         })
         self.authenticator = None
 
@@ -32,8 +32,8 @@ class Cosmicray(object):
 
         >>> api = Cosmicray('cosmicray/myapp')
         >>> api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
-        >>> def coolstuff(request):
-        >>>     return request.response.json()
+        >>> def coolstuff(response):
+        >>>     return response.json()
         >>> coolstuff(json={'name': 'magic'}).post()
         {'id': 12345}
         >>> coolstuff(urlargs={'id': 12345}).get()
@@ -53,26 +53,27 @@ class Cosmicray(object):
         self.routes.append(handler)
         return handler.decorate
 
-    def configure(self, domain, headers=None, authenticator=None, **kwargs):
+    def configure(self, domain=None, authenticator=None, headers=None, **kwargs):
         '''
         :param domain: Set the domain name that the app will use
-        :param headers: Set any headers that all requests must have
         :param authentiator: Callback to authenticate each request
             >>> def authenticator(request):
-            >>>     auth = my_custom_auth_function( ... )
-            >>>     return request.set_headers({'X-AUTH-TOKEN': auth['token']})
+            ...     auth = my_custom_auth_function( ... )
+            ...     return request.set_headers({'X-AUTH-TOKEN': auth['token']})
+        :param headers: Set any headers that all requests must have
         :param **kwargs: Globally configure the underlying module used for
             making requests, which in this case it is `requests`
         '''
         self.config.update({
-            'domain': domain,
+            'domain': domain or self.domain,
             'headers': headers or {},
-            'extra_args': kwargs
+            'requests_kwargs': kwargs
         })
         self.authenticator = authenticator
 
     def __repr__(self):
-        return '<Route for {name}>'.format(name=self.name)
+        return '<{app} app for {name}>'.format(
+            app=self.__class__.__name__, name=self.name)
 
 
 class RouteHandler(object):
@@ -101,6 +102,11 @@ class RouteHandler(object):
                 return map(_make, data)
         return data
 
+    def authenticate(self, request):
+        if self.app.authenticator:
+            return self.app.authenticator(request)
+        return request
+
     @property
     def url(self):
         domain = self.app.config['domain']
@@ -108,58 +114,19 @@ class RouteHandler(object):
             domain=domain.rstrip('/'),
             path=self.path.lstrip('/'))
 
-    def authenticate(self, request):
-        if self.app.authenticator:
-            return self.app.authenticator(request)
-        return request
-
-    def get_headers(self):
-        return self.app.config.getcopy('headers')
-
-    def get_extra_args(self):
-        return self.app.config.getcopy('extra_args')
-
     def __eq__(self, obj):
-        return self.path == obj.path
+        if isinstance(obj, RouteHandler):
+            return self.path == obj.path
+        elif isinstance(obj, str):
+            return self.path == obj
+        raise TypeError('Incompatible type: {}'.format(type(obj)))
 
     def __call__(self, model_cls=None, urlargs=None, **requests_args):
         return Request(self).set(model_cls, urlargs, **requests_args)
 
-    def set_model(self, model_cls):
-        return Request(self).set_model(model_cls)
-
-    def set_params(self, **kwargs):
-        return Request(self).set_params(**kwargs)
-
-    def set_headers(self, **kwargs):
-        return Request(self).set_headers(**kwargs)
-
-    def set_urlargs(self, **kwargs):
-        return Request(self).set_urlargs(**kwargs)
-
-    def set_payload(self, data=None, json=None):
-        return Request(self).set_payload(data, json)
-
-    def get(self):
-        return Request(self).get()
-
-    def delete(self):
-        return Request(self).delete()
-
-    def post(self):
-        return Request(self).post()
-
-    def put(self):
-        return Request(self).put()
-
-    def head(self):
-        return Request(self).head()
-
-    def options(self):
-        return Request(self).options()
-
     def __repr__(self):
-        return '<RouteHandler for {path!r}>'.format(path=self.path)
+        return '<{name} for {path!r}>'.format(
+            name=self.__class__.__name__, path=self.path)
 
 
 class Request(object):
@@ -169,27 +136,19 @@ class Request(object):
             'params': {},
             'json': None,
             'data': None,
-            'headers': handler.get_headers(),
+            'headers': handler.app.config.getcopy('headers'),
         }
-        self.requests_args.update(handler.get_extra_args())
+        self.requests_args.update(handler.app.config.getcopy('requests_kwargs'))
         self.urlargs = {}
         self.model_cls = None
-        self.response = None
 
     def is_request_for(self, *route_handlers):
         return any(self.handler == handler for handler in route_handlers)
 
     def set(self, model_cls=None, urlargs=None, **kwargs):
-        self.set_model(model_cls)
+        self.model_cls = model_cls
         self.set_urlargs(urlargs)
         self.requests_args.update(**kwargs)
-        return self
-
-    def set_model(self, model_cls):
-        if model_cls is not None:
-            self.model_cls = model_cls
-            if not isinstance(model_cls, type):
-                self.set_urlargs(**model_cls.dict)
         return self
 
     def set_urlargs(self, from_dict_obj=None,  **kwargs):
