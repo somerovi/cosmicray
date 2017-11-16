@@ -172,6 +172,7 @@ class Request(object):
     def set_urlargs(self, from_dict_obj=None,  **kwargs):
         self.urlargs.update(
             from_dict_obj or {}, **kwargs)
+        self.urlargs = dict((k, v) for k, v in self.urlargs.items() if v not in [None, ''] )
         return self
 
     def set_headers(self, from_dict_obj=None, **kwargs):
@@ -268,16 +269,10 @@ class Request(object):
 
 
 class DefaultUrlFormatter(string.Formatter):
-    def __init__(self, required=None, *args, **kwargs):
-        super(DefaultUrlFormatter, self).__init__(*args, **kwargs)
-        self.required = required
 
     def get_value(self, key, args, kwargs):
         try:
             return kwargs[key]
         except KeyError as error:
-            if self.required and key not in self.required:
-                raise KeyError(
-                    'Missing required url argument: {}'.format(key))
             return ''
         return Formatter.get_value(key, args, kwargs)
