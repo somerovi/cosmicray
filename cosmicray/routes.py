@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-
+import json
 import string
 
 import requests
@@ -23,11 +23,22 @@ class Cosmicray(object):
         self.config = config.Config({
             'domain': domain,
             'headers': {'User-Agent': self.name},
-            'requests_kwargs': {}
+            'requests_kwargs': {},
+            'disable_validation': False
         })
         self.authenticator = None
 
-    def route(self, path, methods, params=None, urlargs=None):
+    def write_artifact_file(self, config_variable, data, as_json=False):
+        fpath = self.config[config_variable]
+        data = json.dumps(data) if as_json else data
+        util.write_artifact_file(fpath, data)
+
+    def read_artifact_file(self, config_variable, as_json=False):
+        fpath = self.config[config_variable]
+        data = util.read_artifact_file(fpath)
+        return json.loads(data) if as_json else data
+
+    def route(self, path, methods, params=None, urlargs=None, headers=None):
         '''Decorator @route(path, methods, headers, params, urlargs)
 
         >>> api = Cosmicray('cosmicray/myapp')
@@ -49,17 +60,13 @@ class Cosmicray(object):
         :param urlargs: list of required url arguments
         :returns decorates the given function
         '''
-        handler = RouteHandler(self, path, methods, params, urlargs)
+        handler = RouteHandler(self, path, methods, params, urlargs, headers)
         self.routes.append(handler)
         return handler.decorate
 
-    def configure(self, domain=None, authenticator=None, headers=None, **kwargs):
+    def configure(self, domain=None, headers=None, **kwargs):
         '''
         :param domain: Set the domain name that the app will use
-        :param authentiator: Callback to authenticate each request
-            >>> def authenticator(request):
-            ...     auth = my_custom_auth_function( ... )
-            ...     return request.set_headers({'X-AUTH-TOKEN': auth['token']})
         :param headers: Set any headers that all requests must have
         :param **kwargs: Globally configure the underlying module used for
             making requests, which in this case it is `requests`
@@ -69,6 +76,14 @@ class Cosmicray(object):
             'headers': headers or {},
             'requests_kwargs': kwargs
         })
+
+    def set_authenticator(self, authenticator):
+        '''
+        :param authentiator: Callback to authenticate each request
+            >>> def authenticator(request):
+            ...     auth = my_custom_auth_function( ... )
+            ...     return request.set_headers({'X-AUTH-TOKEN': auth['token']})
+        '''
         self.authenticator = authenticator
 
     def __repr__(self):
@@ -77,12 +92,13 @@ class Cosmicray(object):
 
 
 class RouteHandler(object):
-    def __init__(self, app, path, methods, params, urlargs):
+    def __init__(self, app, path, methods, params, urlargs, headers):
         self.app = app
         self.path = path
         self.methods = methods
         self.params = params
         self.urlargs = urlargs
+        self.headers = headers
         self.response_handler = None
 
     def decorate(self, response_handler):
@@ -138,6 +154,8 @@ class Request(object):
             'data': None,
             'headers': handler.app.config.getcopy('headers'),
         }
+        if handler.headers:
+            self.requests_args['headers'].update(handler.headers)
         self.requests_args.update(handler.app.config.getcopy('requests_kwargs'))
         self.urlargs = {}
         self.model_cls = None
@@ -171,26 +189,44 @@ class Request(object):
         return self
 
     def validate_method(self, method):
+        if self.handler.app.config['disable_validation']:
+            return
         if method not in self.handler.methods:
-            raise TypeError('Method {!r} is not supported by {!}'.format(
+            raise TypeError('Method {!r} is not supported by {!r}'.format(
                 method, self.handler))
 
-    def validate_params(self):
-        if self.handler.params:
+    def set_param_defaults(self, actual, expected):
+        if self.handler.app.config['disable_validation']:
+            return
+        if expected:
             missing = []
-            for param in self.handler.params:
-                if param.name not in self.requests_args['params']:
-                    if param.value is not None:
-                        value = param.value() if callable(param.value) else param.value
-                        self.requests_args['params'][param.name] = value
+            if not actual:
+                raise ValueError('{!r} requires parameters: '.format(
+                    self.handler, ', '.join((e.name for e in expected))))
+            for param in expected:
+                if param.name not in actual:
+                    if param.default is not None:
+                        value = param.default() if callable(param.default) else param.default
+                        actual[param.name] = value
                     elif param.required:
                         missing.append(param.name)
+                else:
+                    value = actual[param.name]
+                    if param.enums and value not in param.enums:
+                        raise ValueError('{!r} invalid value for {}: {}'.format(
+                            self.handler, param, value))
+                    elif param.validate:
+                        param.validate(value)
             if missing:
-                raise ValueError('{!r} requires query parameters: {}'.format(
+                raise ValueError('{!r} requires parameters: {}'.format(
                     self.handler, ', '.join(missing)))
+        return actual
 
     def request(self, method):
-        self.validate_params()
+        self.set_param_defaults(
+            self.requests_args['params'], self.handler.params)
+        self.set_param_defaults(
+            self.urlargs, self.handler.urlargs)
         self.validate_method(method)
         self.handler.authenticate(self)
         url = DefaultUrlFormatter().format(self.handler.url, **self.urlargs)

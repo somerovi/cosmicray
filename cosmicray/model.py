@@ -52,12 +52,6 @@ class Model(object):
     def update_payload(self):
         return {'json': self.dict}
 
-    def set_params(self, from_dict_obj=None, **kwargs):
-        return self.get_route().set_params(from_dict_obj, **kwargs)
-
-    def set_urlargs(self, from_dict_obj=None, **kwargs):
-        return self.get_route().set_urlargs(from_dict_obj, **kwargs)
-
     def get_route(self):
         return self.__route__(
             model_cls=self.__class__, urlargs=self.dict)

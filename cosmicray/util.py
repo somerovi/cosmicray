@@ -10,11 +10,14 @@ USER_DIR = '~'
 COSMICRAY_DIR = '.cosmicray'
 
 
-QueryParam = collections.namedtuple('QueryParam', ['name', 'value', 'required'])
+QueryParam = collections.namedtuple(
+    'QueryParam', ['name', 'default', 'required', 'enums', 'validate'])
 
 
-def param(name, value=None, required=False):
-    return QueryParam(name=name, value=value, required=required)
+def param(name, default=None, required=False, enums=None, validate=None):
+    return QueryParam(
+        name=name, default=default, required=required,
+        enums=enums, validate=validate)
 
 
 class CachedArtifact(object):
