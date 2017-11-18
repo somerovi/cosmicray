@@ -11,20 +11,26 @@ from . import util
 
 class Cosmicray(object):
     '''
-    >>> api = Cosmicray('cosmicray/myapp')
+    Cosmicray app is created to hold the overarching configurations and meta data for an api client
+
+    :param name: App name and User-Agent header
+    :param domain: Domain name. Default: http://localhost:8080
+    :param home_dir: Apps home directory to store artifact files, such as credentials
+        the full path for the home directory will be ``~/.cosmicray/{home_dir}``
+
+    Usage::
+
+        >>> api = Cosmicray('cosmicray/myapp', 'http://mydomain.com', home_dir='myapp')
     '''
-    def __init__(self, name, domain='http://localhost:8080'):
-        '''
-        :param name: App name and User-Agent header
-        :param domain: Domain name. Default: http://localhost:8080
-        '''
+    def __init__(self, name, domain='http://localhost:8080', home_dir=None):
         self.name = name
         self.routes = []
         self.config = config.Config({
             'domain': domain,
             'headers': {'User-Agent': self.name},
             'requests_kwargs': {},
-            'disable_validation': False
+            'disable_validation': False,
+            'home_dir': home_dir
         })
         self.authenticator = None
 
@@ -39,26 +45,26 @@ class Cosmicray(object):
         return json.loads(data) if as_json else data
 
     def route(self, path, methods, params=None, urlargs=None, headers=None):
-        '''Decorator @route(path, methods, headers, params, urlargs)
-
-        >>> api = Cosmicray('cosmicray/myapp')
-        >>> api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
-        >>> def coolstuff(response):
-        >>>     return response.json()
-        >>> coolstuff(json={'name': 'magic'}).post()
-        {'id': 12345}
-        >>> coolstuff(urlargs={'id': 12345}).get()
-        {'id': 12345, 'name': 'magic'}
-        >>> coolstuff(urlargs={'id': 12345}, json={'name': 'black magic'}).put()
-        {'id': 12345, 'name': 'black magic'}
-        >>> coolstuff(urlargs={'id': 12345}).delete()
-        {'id': 12345, 'name': 'black magic'}
+        '''Decorator @route(path, methods, headers, params, urlargs, headers)
 
         :param path: Uri of type str or string formatter.
         :param methods: list of all allowed methods
         :param params: list of query parameters of type cosmicray.util.QueryParam
         :param urlargs: list of required url arguments
-        :returns decorates the given function
+        :param headers: dict representing request headers
+        :returns decorates the provided function
+
+        Usage::
+
+            >>> api = Cosmicray('cosmicray/myapp')
+            >>> api.route('/v1/coolstuff/{id}', ['GET', 'POST', 'PUT', 'DELETE'])
+            ... def coolstuff(response):
+            ...     return response.json()
+            >>> coolstuff(json={'name': 'magic'}).post()
+            >>> coolstuff(urlargs={'id': 12345}).get()
+            >>> coolstuff(urlargs={'id': 12345}, json={'name': 'black magic'}).put()
+            >>> coolstuff(urlargs={'id': 12345}).delete()
+
         '''
         handler = RouteHandler(self, path, methods, params, urlargs, headers)
         self.routes.append(handler)
@@ -79,7 +85,12 @@ class Cosmicray(object):
 
     def set_authenticator(self, authenticator):
         '''
-        :param authentiator: Callback to authenticate each request
+        :param authentiator: Callback to authenticate each request.
+             The callback must accept :class:`Request <Request>` as the only
+             argument and return :class:`Request <Request>`
+
+        Example::
+
             >>> def authenticator(request):
             ...     auth = my_custom_auth_function( ... )
             ...     return request.set_headers({'X-AUTH-TOKEN': auth['token']})

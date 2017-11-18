@@ -31,7 +31,9 @@ class Model(object):
         return dict((k, v) for k, v in self.items())
 
     def set_dict(self, fields):
-        self.setfields(**fields)
+        updates = self.get_dict()
+        updates.update(fields)
+        self.setfields(**updates)
 
     dict = property(get_dict, set_dict)
 

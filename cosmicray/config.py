@@ -13,14 +13,12 @@ class Config(object):
     def __init__(self, data=None,  **kwargs):
         self._config = {}
         self.update(data, **kwargs)
-        self.env_prefix = 'CR_'
 
     def get(self, key, default=None):
         return self._config(key.upper(), default)
 
     def getenv(self, key, default=None):
-        envvar = self.env_prefix + key.upper()
-        return os.environ.get(envvar, default)
+        return os.environ.get(key.upper(), default)
 
     def getcopy(self, key):
         value = self[key]
