@@ -10,15 +10,6 @@ USER_DIR = '~'
 COSMICRAY_DIR = '.cosmicray'
 
 
-Param = collections.namedtuple(
-    'Param', ['name', 'default', 'required', 'enums', 'validate'])
-
-
-def param(name, default=None, required=False, enums=None, validate=None):
-    return Param(name=name, default=default, required=required,
-                 enums=enums, validate=validate)
-
-
 class CachedArtifact(object):
     __cached = {}
 
@@ -46,7 +37,9 @@ def user_home(*args):
     return os.path.join(home, *args)
 
 
-def cosmicray_home(*args):
+def cosmicray_home(*args, root_path=None):
+    if root_path:
+        return os.path.join(root_path, *args)
     directory = user_home(COSMICRAY_DIR)
     if not os.path.exists(directory):
         os.makedirs(directory)

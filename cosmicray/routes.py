@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+
 import json
 import string
 
@@ -21,8 +22,9 @@ class Cosmicray(object):
     Usage::
 
         >>> api = Cosmicray('cosmicray/myapp', 'http://mydomain.com', home_dir='myapp')
+
     '''
-    def __init__(self, name, domain='http://localhost:8080', home_dir=None):
+    def __init__(self, name, domain='http://localhost:8080', home_dir='', root_path=None):
         self.name = name
         self.routes = []
         self.config = config.Config({
@@ -30,7 +32,7 @@ class Cosmicray(object):
             'headers': {'User-Agent': self.name},
             'requests_kwargs': {},
             'disable_validation': False,
-            'home_dir': home_dir
+            'home_dir': util.cosmicray_home(home_dir, root_path=root_path)
         })
         self.authenticator = None
 
@@ -45,7 +47,9 @@ class Cosmicray(object):
         return json.loads(data) if as_json else data
 
     def route(self, path, methods, params=None, urlargs=None, headers=None):
-        '''Decorator @route(path, methods, headers, params, urlargs, headers)
+        '''
+        Decorates a function that needs to accept :class:`requests.Response <Response>` object
+        as the only argument, process the response and return the result (ex. return json).
 
         :param path: Uri of type str or string formatter.
         :param methods: list of all allowed methods
@@ -174,6 +178,18 @@ class Request(object):
     def is_request_for(self, *route_handlers):
         return any(self.handler == handler for handler in route_handlers)
 
+    @property
+    def url(self):
+        self.urlargs = self.validate_params(
+            self.urlargs, self.handler.urlargs)
+        return DefaultUrlFormatter().format(self.handler.url, **self.urlargs).rstrip('/')
+
+    @property
+    def params(self):
+        params = self.requests_args.pop('params')
+        return self.validate_params(
+            params, self.handler.params)
+
     def set(self, model_cls=None, urlargs=None, **kwargs):
         self.model_cls = model_cls
         self.set_urlargs(urlargs)
@@ -207,43 +223,22 @@ class Request(object):
             raise TypeError('Method {!r} is not supported by {!r}'.format(
                 method, self.handler))
 
-    def set_param_defaults(self, actual, expected):
+    def validate_params(self, actual, expected):
         if self.handler.app.config['disable_validation']:
-            return
+            return actual
+        params = dict(actual) if actual else {}
         if expected:
-            missing = []
-            if not actual:
-                raise ValueError('{!r} requires parameters: '.format(
-                    self.handler, ', '.join((e.name for e in expected))))
             for param in expected:
-                if param.name not in actual:
-                    if param.default is not None:
-                        value = param.default() if callable(param.default) else param.default
-                        actual[param.name] = value
-                    elif param.required:
-                        missing.append(param.name)
-                else:
-                    value = actual[param.name]
-                    if param.enums and value not in param.enums:
-                        raise ValueError('{!r} invalid value for {}: {}'.format(
-                            self.handler, param, value))
-                    elif param.validate:
-                        param.validate(value)
-            if missing:
-                raise ValueError('{!r} requires parameters: {}'.format(
-                    self.handler, ', '.join(missing)))
-        return actual
+                value = param.validate(params.get(param.name))
+                params[param.name] = value
+        return params
 
     def request(self, method):
-        self.set_param_defaults(
-            self.requests_args['params'], self.handler.params)
-        self.set_param_defaults(
-            self.urlargs, self.handler.urlargs)
         self.validate_method(method)
         self.handler.authenticate(self)
-        url = DefaultUrlFormatter().format(self.handler.url, **self.urlargs)
+
         request = getattr(requests, method.lower())
-        response = request(url, **self.requests_args)
+        response = request(self.url, params=self.params, **self.requests_args)
         try:
             response.raise_for_status()
         except Exception as error:
@@ -287,3 +282,38 @@ class DefaultUrlFormatter(string.Formatter):
         except KeyError as error:
             return ''
         return Formatter.get_value(key, args, kwargs)
+
+
+class Param(object):
+    def __init__(self, name, default=None, required=False, enums=None, validate=None):
+        self.name = name
+        self._default = default
+        self.required = required
+        self.enums = enums
+        self.validate = validate
+
+    @property
+    def default(self):
+        if callable(self._default):
+            return self._default()
+        return self._default
+
+    def validate(self, obj):
+        if not obj:
+            # no param given
+            value = self.default
+            if value is not None:
+                return value
+            if self.required:
+                raise TypeError('Required parameter {!r} not provided'.format(self.name))
+        if self.validate and not self.validate(obj):
+            raise TypeError('Invalid value for parameter {!r}: {!r}'.format(self.name, obj))
+        if self.enums and obj not in self.enums:
+            raise TypeError('Invalid value for parameter {!r}: {!r}'.format(self.name, obj))
+        return obj
+
+    def __repr__(self):
+        return '{name}({args})'.format(
+            name=self.__class__.__name__, args=', '.join(
+            ['{}={!r}'.format((attr, getattr(self, attr)))
+             for attr in ['name', 'default', 'required', 'enums', 'validate']]))

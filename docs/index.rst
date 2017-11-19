@@ -8,8 +8,11 @@ Welcome to cosmicray's documentation!
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Contents
 
+.. include:: ./../README.rst
+
+.. automodule:: cosmicray
 
 
 Indices and tables
