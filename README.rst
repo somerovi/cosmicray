@@ -1,10 +1,3 @@
-.. raw:: html
-
-   <style> .red {color:red; font-weight: bold} </style>
-
-.. role:: red
-
-
 Cosmicray
 =========
 
@@ -25,7 +18,7 @@ Motivation:
 - Authenticate each request as needed
 - Ability to associate routes to models
 
-:red:`WARNING`:
+WARNING:
 
 - Cosmicray is under development
 
