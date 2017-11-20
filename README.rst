@@ -18,9 +18,9 @@ Motivation:
 - Authenticate each request as needed
 - Ability to associate routes to models
 
-WARNING:
+.. warning::
 
-- Cosmicray is under development
+   Cosmicray is under development
 
 Quick start
 -----------
@@ -31,7 +31,7 @@ Create App
 .. code:: python
 
     >>> from cosmicray import Cosmicray
-    >>> api = Cosmicray('myapp')
+    >>> api = Cosmicray('myapp', domain='http://mydomain.com')
 
 Define routes and response handlers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -44,20 +44,20 @@ Using the app we created, we can now add routes for it and define a response han
     >>> def dogs(response):
     ...     return response.json()
 
-- The decorator `api.route` creates an instance of `cosmicray.RouteHandler` named `dogs`
+- The decorator `api.route` creates an instance of `cosmicray.Route` named `dogs`
   and stores the given function internally as the response handler.
 
-- Instances of `cosmicray.RouteHandler` are callable and accept parameters:
+- Instances of `cosmicray.Route` are callable and accept parameters:
 
   - `model_cls`: Optional: Class that implements `_make(cls, response)` classmethod.
   - `urlargs`: Optional: Url formatting arguments as `dict`
   - `**kwargs`: Keyword arguments for `requests` module (ex: `params`, `data`, etc)
 
-- When and instance of `cosmicray.RouteHandler` is called, it returns a `Request` object and with this you can:
+- When and instance of `cosmicray.Route` is called, it returns a `Request` object and with this you can:
 
   - Use functions defined for each http method (ex: `get()`, `post()`, `put()`, `delete()`)
   - Override any parameters passed in (ex: `params`, `headers`, etc.) with setters
-  - Automatically validates given parameters against the defined parameters on the `RouteHandler`
+  - Automatically validates given parameters against the defined parameters on the `Route`
   - Authenticates the request, if the app was configured with an authenticator
   - After the response is handled by the response handler, the result is automatically mapped to the model class, if one was provided
 
@@ -76,7 +76,8 @@ To specify request parameters
 
 .. code:: python
 
-   >>> dogs(params={'breed': 'husky'}, headers={'Content-Type': 'application/json'}).get()
+   >>> dogs(params={'breed': 'husky'},
+   ...             headers={'Content-Type': 'application/json'}).get()
 
 Authenticating requests
 ~~~~~~~~~~~~~~~~~~~~~~~

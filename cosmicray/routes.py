@@ -70,7 +70,7 @@ class Cosmicray(object):
             >>> coolstuff(urlargs={'id': 12345}).delete()
 
         '''
-        handler = RouteHandler(self, path, methods, params, urlargs, headers)
+        handler = Route(self, path, methods, params, urlargs, headers, app=self)
         self.routes.append(handler)
         return handler.decorate
 
@@ -106,8 +106,8 @@ class Cosmicray(object):
             app=self.__class__.__name__, name=self.name)
 
 
-class RouteHandler(object):
-    def __init__(self, app, path, methods, params, urlargs, headers):
+class Route(object):
+    def __init__(self, path, methods, params, urlargs, headers, app=None):
         self.app = app
         self.path = path
         self.methods = methods

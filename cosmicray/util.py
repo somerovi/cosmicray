@@ -37,7 +37,7 @@ def user_home(*args):
     return os.path.join(home, *args)
 
 
-def cosmicray_home(*args, root_path=None):
+def cosmicray_home(root_path=None, *args):
     if root_path:
         return os.path.join(root_path, *args)
     directory = user_home(COSMICRAY_DIR)

@@ -20,9 +20,8 @@ class Config(object):
     def getenv(self, key, default=None):
         return os.environ.get(key.upper(), default)
 
-    def getcopy(self, key):
-        value = self[key]
-        return copy.deepcopy(value)
+    def getcopy(self, key, default=None):
+        return copy.deepcopy(self.get(key, default))
 
     def __getitem__(self, key):
         return self._config[key.upper()]
