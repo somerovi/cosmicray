@@ -19,7 +19,8 @@ SUMMARY = "Develop a client for your HTTP API and document its quirks and featur
 DESCRIPTION = ''
 PACKAGES = ['cosmicray']
 REQUIRED = [
-    'requests==2.18.4'
+    'requests==2.18.4',
+    'six==1.11.0'
 ]
 
 here = os.path.abspath(os.path.dirname(__file__))

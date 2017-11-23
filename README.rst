@@ -50,8 +50,15 @@ Using the app we created, we can now add routes for it and define a response han
 - Instances of `cosmicray.Route` are callable and accept parameters:
 
   - `model_cls`: Optional: Class that implements `_make(cls, response)` classmethod.
-  - `urlargs`: Optional: Url formatting arguments as `dict`
-  - `**kwargs`: Keyword arguments for `requests` module (ex: `params`, `data`, etc)
+  - `\*\*kwargs`: Keyword arguments.
+
+    - `urlargs`: Mapping for url formatting arguments
+    - `headers`: Mapping for headers
+    - `params`: Mapping for query parameters
+    - `data`, `json`, `files`: Request body
+    - `authenticator`: Authenticator callback
+    - *&rest*: Requests keyword arguments
+
 
 - When and instance of `cosmicray.Route` is called, it returns a `Request` object and with this you can:
 
@@ -77,12 +84,12 @@ To specify request parameters
 .. code:: python
 
    >>> dogs(params={'breed': 'husky'},
-   ...             headers={'Content-Type': 'application/json'}).get()
+   ...      headers={'Content-Type': 'application/json'}).get()
 
 Authenticating requests
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Often you'll need to authenticate requests and Cosmicray has you covered!
+Often you'll need to authenticate requests to access private resource and Cosmicray has a built-in mechanism to perform this step.
 
 .. code:: python
 
@@ -91,15 +98,18 @@ Often you'll need to authenticate requests and Cosmicray has you covered!
     ...         auth = token(json={'username': 'me', 'password': 'mysecret'}).post()
     ...         return request.set_headers({'X-AUTH-TOKEN': auth['token']})
     ...     return request
+    ...
     >>> @api.route('/oauth', ['POST'])
     ... def token(response):
     ...     """Get an auth token for the given credentials"""
     ...     return response.json()
+    ...
     >>> @api.route('/private/resource', ['GET'])
     ... def private_resource(response):
     ...     """Must be authenticated to access this"""
     ...     return response.json()
-    >>> api.configure(authenticator)
+    ...
+    >>> api.configure(authenticator=authenticator)
     >>> # Now the private resourse will be automatically updated to include auth headers
     >>> private_resource.get()
 
