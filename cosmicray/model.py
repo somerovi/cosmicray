@@ -4,21 +4,25 @@
 class Model(object):
 
     __fields__ = []
-    __ignorefields__ = []
+    __ignore__ = []
     __route__ = None
 
     def __init__(self, **kwargs):
-        self._setfields(**kwargs)
+        self.setfields(kwargs)
         self.changes = []
 
     def __setattr__(self, name, value):
+        self.track_changes(name, value)
         self.__dict__[name] = value
-        self._track_changes(name)
 
-    def _setfields(self, **fields):
+    def setfields(self, fields):
         for field in self.__fields__:
-            setattr(self, field, fields.pop(field, None))
-        for field in self.__ignorefields__:
+            try:
+                default = getattr(self, field)
+            except AttributeError:
+                default = None
+            setattr(self, field, fields.pop(field, default))
+        for field in self.__ignore__:
             fields.pop(field, None)
         if fields:
             print('{!r} got extra fields: {}'.format(
@@ -34,28 +38,28 @@ class Model(object):
 
     def set_dict(self, fields):
         '''Updates fields from the given dict object'''
-        updates = self.get_dict()
-        updates.update(fields)
-        self._setfields(**updates)
+        self.setfields(fields)
 
     dict = property(get_dict, set_dict, doc='Getter and setter from dict object')
 
     def __nonzero__(self):
         return any(value is not None for _, value in self.items())
 
-    def _track_changes(self, field):
+    def track_changes(self, field, new_value):
+        '''Tracks which fields have updated values'''
         changes = self.__dict__.get('changes')
         if changes and field in self.__fields__:
             self.changes.append(name)
 
-    def _clear_changes(self):
+    def clear_changes(self):
+        '''Clears tracking of changes'''
         self.changes = []
 
-    def create_payload(self):
+    def payload_for_create(self):
         '''POST request default payload: { "json" : self.dict }'''
         return {'json': self.dict}
 
-    def update_payload(self):
+    def payload_for_update(self):
         '''PUT request default payload: { "json" : self.dict }'''
         return {'json': self.dict}
 
@@ -75,11 +79,11 @@ class Model(object):
 
     def create(self):
         '''POST request. Uses :class:`Model.create_payload` as the POST body'''
-        return self.get_request(**self.create_payload()).post()
+        return self.get_request(**self.payload_for_create()).post()
 
     def update(self):
         '''PUT request. Uses :class:`Model.update_payload` as the PUT body'''
-        return self.get_request(**self.update_payload()).put()
+        return self.get_request(**self.payload_for_update()).put()
 
     @classmethod
     def _make(cls, fields):

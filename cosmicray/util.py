@@ -10,32 +10,35 @@ import threading
 import time
 
 
-COSMICRAY_DIR = os.path.join(os.path.expanduser('~'), '.cosmicray')
-DEFAULTS = {
-    'headers': collections.OrderedDict(),
-    'params': {},
-    'urlargs': {},
-    'extra': {}
-}
+COSMICRAY_DIR = '~/.cosmicray'
 
-class _RequestTemplate(object):
+
+class RequestTemplate(object):
+    DEFAULTS = {
+        'headers': collections.OrderedDict,
+        'params': dict,
+        'urlargs': dict,
+        'extra': dict
+    }
     __attr__ = [
-        'headers',
-        'params',
-        'urlargs',
-        'json',
+        'auth',
         'data',
         'files',
+        'headers',
+        'json',
+        'params',
+        'extra',
         'authenticator',
         'domain',
         'path',
         'method',
-        'extra'
+        'urlargs',
     ]
 
     def __init__(self, args=None, **kwargs):
         for attr in RequestTemplate.__attr__:
-            setattr(self, attr, DEFAULTS.get(attr))
+            default = RequestTemplate.DEFAULTS.get(attr)
+            setattr(self, attr, None if not default else default())
         self.update(args, **kwargs)
 
     def items(self):
@@ -105,16 +108,19 @@ class _RequestTemplate(object):
             _, attr = attr.split('set_')
             if attr in RequestTemplate.__attr__:
                 return self._set_attr_chain(attr)
-        elif attr in ['urlargs']:
+        elif attr in ['urlargs', 'params']:
             # Filter out none values from urlargs
             obj = object.__getattribute__(self, attr)
-            return dict((k, v) for k, v in obj.items() if v is not None)
+            if obj:
+                return dict((k, v) for k, v in obj.items() if v is not None)
+            return obj
         return object.__getattribute__(self, attr)
 
 
-class _CachedArtifact(object):
+class CachedArtifact(object):
     '''
-    Provides simple, thread-safe mechanism to cache frequently accessed files and update the cache automatically if files get written to.
+    Provides simple, thread-safe, decorators to cache frequently accessed files
+    and update the cache automatically if files get written to.
     '''
 
     __cached = {}
@@ -128,7 +134,7 @@ class _CachedArtifact(object):
             while CachedArtifact._lock.locked():
                 time.sleep(0.001)
             if not fpath in cls.__cached:
-                cls.__cached[fpath] = function(fpath)
+                cls.__cached[fpath] = function(fpath, serializer)
             return cls.__cached[fpath]
         return decorate
 
@@ -152,7 +158,7 @@ def _keys_to_upper(obj):
 
 
 class Config(object):
-
+    '''lettercase-agnostic key-value store'''
     def __init__(self, args=None,  **kwargs):
         self._config = {}
         self.update(args, **kwargs)
@@ -162,7 +168,7 @@ class Config(object):
         return self._config.get(key.upper(), default)
 
     def getcopy(self, key, default=None):
-        '''Returns a copy of value for the given key or default if key not found'''
+        '''Returns a copy of the value for the given key or default if key not found'''
         return copy.deepcopy(self.get(key, default))
 
     def __getitem__(self, key):
@@ -175,7 +181,7 @@ class Config(object):
         del self._config[key.upper()]
 
     def update(self, args=None, **kwargs):
-        '''Updates configs data'''
+        '''Updates key-value store'''
         self._config.update(
             _keys_to_upper(args or {}), **_keys_to_upper(kwargs))
 
@@ -195,25 +201,24 @@ def create_home_dir(name=None, root_path=None):
     :returns: home directory path
     '''
     if root_path is None:
-        root_path = COSMICRAY_DIR
-    directory = os.path.join(directory, name or '')
+        root_path = os.path.expanduser(COSMICRAY_DIR)
+    directory = os.path.join(root_path, name or '')
     if not os.path.exists(directory):
         os.makedirs(directory)
     return directory
 
 
-@_CachedArtifact.write
+@CachedArtifact.write
 def write_artifact_file(fpath, data, serializer=None):
     '''Writes serialized data to the given file path'''
-    serializer = lambda data: data if serializer is None else serializer
     with codecs.open(fpath, 'w', 'utf-8') as fobj:
-        fobj.write(serializer(data))
+        fobj.write(serializer(data) if serializer else data)
     return data
 
 
-@_CachedArtifact.read
+@CachedArtifact.read
 def read_artifact_file(fpath, serializer=None):
     '''Reads and deserializes contents of data to the given file path'''
-    serializer = lambda data: data if serializer is None else serializer
     with codecs.open(fpath, 'r', 'utf-8') as fobj:
-        return serializer(fobj.read())
+        data = fobj.read()
+        return serializer(data) if serializer else data

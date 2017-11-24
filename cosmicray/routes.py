@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 
-import json
+import os
 import string
 
 import requests
@@ -11,8 +11,7 @@ from . import util
 
 
 class Cosmicray(object):
-    '''Cosmicray
-
+    '''
     :param name: App name and User-Agent header
     :param domain: Domain name. Default: http://localhost:8080
     :param home_dir: Apps home directory to store artifact files, such as credentials
@@ -21,6 +20,7 @@ class Cosmicray(object):
     Usage::
 
         >>> api = Cosmicray('myapp', 'http://mydomain.com')
+        >>> api.configure(headers={'Content-Type': 'application/json'})
 
     '''
     def __init__(self, name, domain='http://localhost:8080', home_dir=None):
@@ -30,8 +30,12 @@ class Cosmicray(object):
             'disable_validation': False,
             'home_dir': util.create_home_dir(name, root_path=home_dir)
         })
-        self.tpl = util._RequestTemplate(
+        self.tpl = util.RequestTemplate(
             domain=domain, headers={'User-Agent': self.name})
+
+    def home_dir(self, *args):
+        '''Returns home directory path joined with the given argument sequence'''
+        return os.path.join(self.config['home_dir'], *args)
 
     def route(self, path, methods, params=None, urlargs=None, headers=None):
         '''
@@ -44,21 +48,34 @@ class Cosmicray(object):
         :param urlargs: list of :class:`cosmicray.Param`
         :param headers: mapping representing request headers
         :returns: decorator
+
+        Usage::
+
+            >>> api = Cosmicray('myapp', 'http://mydomain.com')
+            >>> @api.route('/some/path')
+            ... def some_path(response):
+            ...     return response.json()
+            ...
+
         '''
         route = Route(path, methods, params, urlargs, headers, app=self)
         self.routes.append(route)
         return route.response_handler_decorator
 
-    def configure(self, **kwargs):
+    def configure(self, config=None, **kwargs):
         '''
-        :param domain: Set the domain name that the app will use
-        :param headers: Set any headers that all requests must have
-        :param urlargs: Specify url formatting parameters
-        :param params: Specify query parameters
-        :param authenticator: Specify request authenticator
-        :param \*\*kwargs: Keyword arguments for `requests`
+        :param config: Mapping for general app settings
+        :param \*\*kwargs: Application wide request configurations
+             domain: Domain name
+             headers: Mapping of http headers
+             urlargs: Mapping of url formatting arguments
+             params: Mapping of query parameters
+             authenticator: Callback for request authentication
+             auth: Basic auth
+             &rest: Keyword arguments for `requests`
         '''
         self.tpl.update(**kwargs)
+        self.config.update(config)
 
     def get_config(self, key):
         '''Return config value for the given key'''
@@ -73,7 +90,13 @@ class Cosmicray(object):
 
 
 class Route(object):
-    '''Defines
+    '''Defines properties of a route
+
+    :param path: Uri of type str or string formatter.
+    :param methods: list of all allowed methods
+    :param params: list of :class:`cosmicray.Param` query parameters
+    :param urlargs: list of :class:`cosmicray.Param`
+    :param headers: mapping representing request headers
     '''
 
     def __init__(self, path, methods, params, urlargs, headers, app=None):
@@ -114,7 +137,7 @@ class Route(object):
             name=self.__class__.__name__, path=self.path)
 
 
-class Request(util._RequestTemplate):
+class Request(util.RequestTemplate):
     __doc__ = ('''
     :param route: instance of :class:`Route`
     :param model_cls: class that implements `_make` method
@@ -127,7 +150,7 @@ class Request(util._RequestTemplate):
     :class:`Request` provides special setter methods that set the given attribute and return the instance of itself to chain together calls:
     {}
     '''.format('\n'.join('\t\t:class:`Request.set_{}`\n'.format(attr)
-                       for attr in util._RequestTemplate.__attr__)))
+                       for attr in util.RequestTemplate.__attr__)))
 
     def __init__(self, route, model_cls, args=None, **kwargs):
         super(Request, self).__init__(args, **kwargs)
@@ -153,11 +176,11 @@ class Request(util._RequestTemplate):
                 return map(_make, response)
         return response
 
-    def authenticate(self, request):
+    def authenticate(self):
         '''Authenticates the request, if :class:`Request`.authenticator call back is provided'''
         if self.authenticator:
-            return self.authenticator(request)
-        return request
+            return self.authenticator(self)
+        return self
 
     def validate(self):
         '''Validates method, query parameters, and urlarg parameters'''
@@ -166,29 +189,33 @@ class Request(util._RequestTemplate):
                 raise TypeError('Method {!r} is not supported by {!r}'.format(
                     self.method, self.route))
 
-            self.validate_params(self.params, self.route.params)
-            self.validate_params(self.urlargs, self.route.urlargs)
+            self.params = self._validate_params(self.params, self.route.params)
+            self.urlargs = self._validate_params(self.urlargs, self.route.urlargs)
+        return self
 
     def _validate_params(self, actual, expected):
         if expected:
             for param in expected:
                 value = param.validate(actual.get(param.name), context=self)
                 actual[param.name] = value
+        return actual
 
     @property
     def url(self):
-        '''The request url'''
+        '''combines domain and path and formats the final result with urlargs'''
         url = '{}/{}'.format(self.domain.rstrip('/'), self.path.lstrip('/'))
-        return _DefaultUrlFormatter().format(url, **self.urlargs).rstrip('/')
+        return DefaultUrlFormatter().format(url, **self.urlargs).rstrip('/')
 
-    def request(self):
+    def prepare(self):
+        return requests.Request(
+            self.method.lower(), self.url, headers=self.headers, params=self.params,
+            data=self.data, files=self.files, json=self.json,
+            auth=self.auth, **self.extra).prepare()
+
+    def send(self):
         '''Makes request and returns the result of the response being handled by the response handler'''
-        self.authenticate(request=self)
-        self.validate()
-        request = getattr(requests, self.method.lower())
-        response = request(
-            self.url, headers=self.headers, params=self.params,
-            data=self.data, files=self.files, json=self.json, **self.extra)
+        session = requests.Session()
+        response = session.send(self.prepare())
         try:
             response.raise_for_status()
         except Exception as error:
@@ -198,33 +225,33 @@ class Request(util._RequestTemplate):
 
     def get(self):
         '''GET request'''
-        return self.set_method('GET').request()
+        return self.set_method('GET').validate().authenticate().send()
 
     def delete(self):
         '''DELETE request'''
-        return self.set_method('DELETE').request()
+        return self.set_method('DELETE').validate().authenticate().send()
 
     def post(self):
         '''POST request'''
-        return self.set_method('POST').request()
+        return self.set_method('POST').validate().authenticate().send()
 
     def put(self):
         '''PUT request'''
-        return self.set_method('PUT').request()
+        return self.set_method('PUT').validate().authenticate().send()
 
     def head(self):
         '''HEAD request'''
-        return self.set_method('HEAD').request()
+        return self.set_method('HEAD').validate().authenticate().send()
 
     def options(self):
         '''OPTIONS request'''
-        return self.set_method('OPTIONS').request()
+        return self.set_method('OPTIONS').validate().authenticate().send()
 
     def __repr__(self):
         return '<Request for {}>'.format(self.route.path)
 
 
-class _DefaultUrlFormatter(string.Formatter):
+class DefaultUrlFormatter(string.Formatter):
 
     def get_value(self, key, args, kwargs):
         try:
@@ -266,7 +293,8 @@ class Param(object):
 
         if self.options and obj not in self.options:
             raise TypeError('Invalid value for parameter {!r}: {!r}'.format(self.name, obj))
-        return obj
+
+        return value
 
     def __repr__(self):
         return '{name}({args})'.format(
