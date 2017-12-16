@@ -14,13 +14,14 @@ COSMICRAY_DIR = '~/.cosmicray'
 
 
 class RequestTemplate(object):
+
     DEFAULTS = {
         'headers': collections.OrderedDict,
         'params': dict,
         'urlargs': dict,
         'extra': dict
     }
-    __attr__ = [
+    __slots__ = (
         'auth',
         'data',
         'files',
@@ -33,10 +34,12 @@ class RequestTemplate(object):
         'path',
         'method',
         'urlargs',
-    ]
+        'model_cls',
+        'route'
+    )
 
     def __init__(self, args=None, **kwargs):
-        for attr in RequestTemplate.__attr__:
+        for attr in RequestTemplate.__slots__:
             default = RequestTemplate.DEFAULTS.get(attr)
             setattr(self, attr, None if not default else default())
         self.update(args, **kwargs)
@@ -44,11 +47,11 @@ class RequestTemplate(object):
     def items(self):
         '''Returns iterator of attr and value pairs. The returned value is a copy'''
         return ((attr, copy.deepcopy(getattr(self, attr)))
-                for attr in RequestTemplate.__attr__)
+                for attr in RequestTemplate.__slots__)
 
     def copy(self):
         '''Returns new instance of :class:`RequestTemplate` with a copy of all fields'''
-        return RequestTemplate(self.items())
+        return self.__class__(self.items())
 
     def update(self, args=None, **kwargs):
         '''Soft updates based on the given arguments. Mapping objects will be
@@ -93,20 +96,20 @@ class RequestTemplate(object):
             self.extra[attr] = arg
 
     def _set_attr_chain(self, attr):
-        '''All attributes in the :class:`RequestTemplate`.__attr__ have a
+        '''All attributes in the :class:`RequestTemplate`.__slots__ have a
         special setter that can be used to set the value of the attribute and
         return the instance of itself to chain together calls.
         The setter is of the form: set_{attr name}
         '''
-        def wrapper(arg=None, **kwargs):
-            self._set_attr(attr, arg, kwargs, override=False)
+        def wrapper(arg=None, override=False, **kwargs):
+            self._set_attr(attr, arg, kwargs, override=override)
             return self
         return wrapper
 
     def __getattribute__(self, attr):
         if attr.startswith('set_'):
             _, attr = attr.split('set_')
-            if attr in RequestTemplate.__attr__:
+            if attr in RequestTemplate.__slots__:
                 return self._set_attr_chain(attr)
         elif attr in ['urlargs', 'params']:
             # Filter out none values from urlargs
@@ -153,8 +156,8 @@ class CachedArtifact(object):
         return decorate
 
 
-def _keys_to_upper(obj):
-    return dict((k.upper(), v) for k, v in obj.items())
+def _keys_to_lower(obj):
+    return dict((k.lower(), v) for k, v in obj.items())
 
 
 class Config(object):
@@ -165,25 +168,25 @@ class Config(object):
 
     def get(self, key, default=None):
         '''Return value for the given key or default if key not found'''
-        return self._config.get(key.upper(), default)
+        return self._config.get(key.lower(), default)
 
     def getcopy(self, key, default=None):
         '''Returns a copy of the value for the given key or default if key not found'''
         return copy.deepcopy(self.get(key, default))
 
     def __getitem__(self, key):
-        return self._config[key.upper()]
+        return self._config[key.lower()]
 
     def __setitem__(self, key, value):
-        self._config[key.upper()] = value
+        self._config[key.lower()] = value
 
     def __delitem__(self, key):
-        del self._config[key.upper()]
+        del self._config[key.lower()]
 
     def update(self, args=None, **kwargs):
         '''Updates key-value store'''
         self._config.update(
-            _keys_to_upper(args or {}), **_keys_to_upper(kwargs))
+            _keys_to_lower(args or {}), **_keys_to_lower(kwargs))
 
     def copy(self):
         '''Return instance of :class:`Config` with copy of the objects data'''

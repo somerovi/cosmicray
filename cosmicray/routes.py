@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-
+import collections
+import json
 import os
 import string
 
@@ -27,11 +28,13 @@ class Cosmicray(object):
         self.name = name
         self.routes = []
         self.config = util.Config({
+            'debug': False,
             'disable_validation': False,
             'home_dir': util.create_home_dir(name, root_path=home_dir)
         })
         self.tpl = util.RequestTemplate(
             domain=domain, headers={'User-Agent': self.name})
+        self.session = requests.Session()
 
     def home_dir(self, *args):
         '''Returns home directory path joined with the given argument sequence'''
@@ -150,7 +153,8 @@ class Request(util.RequestTemplate):
     :class:`Request` provides special setter methods that set the given attribute and return the instance of itself to chain together calls:
     {}
     '''.format('\n'.join('\t\t:class:`Request.set_{}`\n'.format(attr)
-                       for attr in util.RequestTemplate.__attr__)))
+                       for attr in util.RequestTemplate.__slots__)))
+    __slots__ = ()
 
     def __init__(self, route, model_cls, args=None, **kwargs):
         super(Request, self).__init__(args, **kwargs)
@@ -203,19 +207,35 @@ class Request(util.RequestTemplate):
     @property
     def url(self):
         '''combines domain and path and formats the final result with urlargs'''
-        url = '{}/{}'.format(self.domain.rstrip('/'), self.path.lstrip('/'))
-        return DefaultUrlFormatter().format(url, **self.urlargs).rstrip('/')
+        uri = DefaultUrlFormatter().format(self.path, **self.urlargs)
+        return '{}/{}'.format(self.domain.rstrip('/'), uri.lstrip('/'))
 
-    def prepare(self):
-        return requests.Request(
-            self.method.lower(), self.url, headers=self.headers, params=self.params,
-            data=self.data, files=self.files, json=self.json,
-            auth=self.auth, **self.extra).prepare()
+    def _log(self, response):
+        '''Log the request and response'''
+        if self.route.get_config('debug'):
+            obj = json.dumps({
+                'request': {
+                    'url': response.url,
+                    'method': response.request.method,
+                    'headers': dict(response.request.headers),
+                    'body': str(response.request.body or "")
+                },
+                'response': {
+                    'headers': dict(response.headers),
+                    'status_code': response.status_code,
+                    'body': response.text,
+                    'duration': response.elapsed.total_seconds()
+                }
+            })
+            print(obj)
 
     def send(self):
         '''Makes request and returns the result of the response being handled by the response handler'''
-        session = requests.Session()
-        response = session.send(self.prepare())
+        response = self.route.app.session.request(
+            self.method.lower(), self.url, headers=self.headers, params=self.params,
+            data=self.data, files=self.files, json=self.json,
+            auth=self.auth, **self.extra)
+        self._log(response)
         try:
             response.raise_for_status()
         except Exception as error:
@@ -288,11 +308,12 @@ class Param(object):
             value = self.default(obj, context)
         else:
             value = self.default if obj is None else obj
-        if self.required and not value:
-            raise TypeError('Required parameter {!r} not provided'.format(self.name))
 
-        if self.options and obj not in self.options:
-            raise TypeError('Invalid value for parameter {!r}: {!r}'.format(self.name, obj))
+        if self.required and not value:
+            raise TypeError('Required parameter {!r} is None or not provided'.format(self.name))
+
+        if self.options and value not in self.options:
+            raise TypeError('Invalid value for parameter {!r}: {!r}'.format(self.name, value))
 
         return value
 
