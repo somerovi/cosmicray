@@ -144,7 +144,6 @@ class ModelAttribute(object):
         return self._get_model_instance_attribute(model_ref).setter(obj)
 
     def deleter(self, model_ref):
-        ''''''
         return self._get_model_instance_attribute(model_ref).deleter()
 
     def _get_model_instance_attribute(self, model_ref):
@@ -173,8 +172,30 @@ class ModelInstanceAttribute(object):
     def __nonzero__(self):
         return self.model_obj is not None
 
+    def __getattr__(self, attr):
+        return getattr(self.model_obj, attr)
+
+    def __getitem__(self, name):
+        return self.model_obj.__getitem__(name)
+
+    def __setitem__(self, name, value):
+        return self.model_obj.__setitem__(name, value)
+
+    def __delitem__(self, name):
+        return self.model_obj.__delitem__(name)
+
+    def __iter__(self):
+        return self.model_obj.__iter__()
+
+    def __next__(self):
+        return self.model_obj.__next__()
+
+    def getvalue(self):
+        return self.model_obj
+
     def getter(self):
-        return self.get()
+        self.get()
+        return self
 
     def setter(self, obj):
         self.model_obj = obj
@@ -233,8 +254,7 @@ class ModelInstanceAttribute(object):
         return list(result) if self.model_attr.is_sequence else result
 
     def __repr__(self):
-        return '<{!r}: {!r} >'.format(
-            hex(self.__hash__()), self.model_obj)
+        return '<ModelInstanceAttribute for {}>'.format(repr(self.model_obj))
 
 
 def relationship(model_cls=None, route=None, urlargs=None, params=None, is_sequence=False,
