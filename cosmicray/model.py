@@ -16,6 +16,7 @@ class Model(object):
         self.__changes__ = []
         self.__model_attr__ = {}
         self.setfields(kwargs, track=False)
+        self.clear_changes()
 
     def setfields(self, fields, track=True):
         for field in self.__slots__:
@@ -190,8 +191,12 @@ class ModelInstanceAttribute(object):
     def __next__(self):
         return self.model_obj.__next__()
 
-    def getvalue(self):
+    @property
+    def value(self):
         return self.model_obj
+
+    def clear(self):
+        self.model_obj = None
 
     def getter(self):
         self.get()
@@ -201,7 +206,7 @@ class ModelInstanceAttribute(object):
         self.model_obj = obj
 
     def deleter(self):
-        self.model_obj = None
+        self.clear()
 
     def __call__(self, **kwargs):
         urlargs = {}
