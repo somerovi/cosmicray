@@ -19,7 +19,7 @@ SUMMARY = "Develop a client for your HTTP API and document its quirks and featur
 DESCRIPTION = ''
 PACKAGES = ['cosmicray']
 REQUIRED = [
-    'colorama==0.3.9'm
+    'colorama==0.3.9',
     'requests==2.18.4',
     'six==1.11.0'
 ]
