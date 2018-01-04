@@ -22,6 +22,13 @@ Motivation:
 
    Cosmicray is under development
 
+Install
+-------
+
+.. code::
+
+   $ pip install cosmicray
+
 Quick start
 -----------
 
@@ -94,13 +101,13 @@ Often you'll need to authenticate requests to access private resource and Cosmic
 .. code:: python
 
     >>> def authenticator(request):
-    ...     if not request.is_request_for(auth):
-    ...         auth = token(json={'username': 'me', 'password': 'mysecret'}).post()
+    ...     if not request.is_request_for(login):
+    ...         auth = login(json={'username': 'me', 'password': 'mysecret'}).post()
     ...         return request.set_headers({'X-AUTH-TOKEN': auth['token']})
     ...     return request
     ...
     >>> @api.route('/oauth', ['POST'])
-    ... def token(response):
+    ... def login(response):
     ...     """Get an auth token for the given credentials"""
     ...     return response.json()
     ...
@@ -116,6 +123,9 @@ Often you'll need to authenticate requests to access private resource and Cosmic
 Models
 ------
 
+Basics
+~~~~~~
+
 - Cosmicray ships with a built-in Model class
 - This base class is bound to a specific route handler and defines all the fields that would get mapped to a response or be part as the payload for `post` and `put` requests
 - It automatically uses its defined fields as url parameters and as request body
@@ -124,10 +134,10 @@ Models
 
 .. code:: python
 
-    >>> from cosmicray import Model
+    >>> from cosmicray.model import Model
     >>> class Dog(Model):
     ...     __route__ = dogs
-    ...     __fields__ = [
+    ...     __slots__ = [
     ...         'id',
     ...         'name',
     ...         'breed',
@@ -139,6 +149,24 @@ Models
     >>> manu.delete()
     >>> manu = Dog(id=12345).get()
     >>> alldogs = Dog().get()
+
+
+Relationships with other models/routes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+.. code:: python
+
+    >>> from cosmicray.model import relationhip, Model, ModelParam
+    >>> class Cat(cosmicray.model.Model):
+    ...     __route__ = cats
+    ...     __slots__ = [
+    ...         'id',
+    ...         'name',
+    ...         'age'
+    ...     ]
+    ...     friends = relationhip('Friend', urlargs={'id': ModelParam('id')})
+
 
 If you don't want to use `cosmicray.Model` as your base, you can define your own OR
 even use just use `collections.namedtuple` as the model.
