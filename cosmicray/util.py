@@ -195,6 +195,17 @@ class Config(object):
     def __repr__(self):
         return '<Config {!r}>'.format(self._config)
 
+    def get_dict(self):
+        return self._config
+
+    def set_dict(self, obj):
+        self._config = obj
+
+    def del_dict(self):
+        del self._config
+
+    dict = property(get_dict, set_dict, del_dict)
+
 
 def create_home_dir(name=None, root_path=None):
     '''Creates a home directory

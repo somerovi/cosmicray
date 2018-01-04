@@ -132,8 +132,8 @@ class ModelAttribute(object):
                  get_create_payload, get_update_payload):
         self.model_cls_name = model_cls_name
         self.route = route
-        self.urlargs = urlargs
-        self.params = params
+        self.urlargs = urlargs or {}
+        self.params = params or {}
         self.is_sequence = is_sequence
         self.get_update_payload = get_update_payload
         self.get_create_payload = get_create_payload

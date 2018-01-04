@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import collections
+import inspect
 import json
 import os
 import string
@@ -9,6 +10,9 @@ import requests
 import six
 
 from . import util
+
+
+STORE_ITEMS = ['auth', 'domain', 'headers', 'params', 'urlargs', 'extra']
 
 
 class Cosmicray(object):
@@ -32,6 +36,7 @@ class Cosmicray(object):
             'disable_validation': False,
             'home_dir': util.create_home_dir(name, root_path=home_dir)
         })
+        self.config['cache_filename'] = self.home_dir('cache')
         self.tpl = util.RequestTemplate(
             domain=domain, headers={'User-Agent': self.name})
         self.session = requests.Session()
@@ -85,7 +90,28 @@ class Cosmicray(object):
         try:
             return getattr(self.tpl, key.lower())
         except AttributeError:
-            return self.config[key]
+            try:
+                return self.config[key]
+            except KeyError:
+                return self.tpl.extra[key]
+
+    def store_configurations(self):
+        ''''Save config to file'''
+        configs = {
+            'config': self.config.dict,
+            'request_config': dict(
+                (k, v) for k, v in self.tpl.items() if k in STORE_ITEMS),
+        }
+        util.write_artifact_file(
+            self.get_config('cache_filename'), configs, json.dumps)
+
+    def load_configurations(self):
+        ''''Load config from file'''
+        fpath = self.get_config('cache_filename')
+        if os.path.exists(fpath):
+            configs = util.read_artifact_file(fpath, json.loads)
+            self.config.update(configs.get('config'))
+            self.tpl.update(**configs.get('request_config', {}))
 
     def __repr__(self):
         return '<{app} app for {name}>'.format(
@@ -167,8 +193,12 @@ class Request(util.RequestTemplate):
 
     def handle_response(self, response):
         '''Calls the routes response handler with the given response and maps the model to the given result'''
+        expected_args = inspect.getargspec(self.route.response_handler).args
+        args = [arg == 'response' and response or
+                arg == 'context' and self
+                for arg in expected_args]
         return self.map_model(
-            self.route.response_handler(response))
+            self.route.response_handler(*args))
 
     def map_model(self, response):
         '''Calls :class:`Request`.model_cls._make method if a model was provided, otherwise returns the given response'''
@@ -239,7 +269,6 @@ class Request(util.RequestTemplate):
         try:
             response.raise_for_status()
         except Exception as error:
-            print(response.text)
             raise error
         return self.handle_response(response)
 
