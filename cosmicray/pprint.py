@@ -131,21 +131,30 @@ class Formatting(object):
     :param formattings: List of ``Formatting`` objects
     '''
     def __init__(self, attr_name=None, formatter=None, is_sequence=False,
-                 is_recursive=False, rfilter=None, color=None, formattings=None):
+                 is_recursive=False, rfilter=None, color=None, color_if=None,
+                 formattings=None):
         self.attr_name = attr_name
         self.formatter = formatter
         self.is_sequence=is_sequence
         self.is_recursive = is_recursive
         self.rfilter = rfilter
         self.formattings = formattings or []
-        self.color = color if color else ''
+        self.color = color
+        self.color_if = color_if
+
+    def get_color(self, obj):
+        if self.color_if:
+            return self.color_if(obj)
+        elif self.color:
+            return self.color
+        return ''
 
 
 class PrettyPrinter(object):
     def __init__(self, tab, tab_width):
         self.writer = six.StringIO()
         self.formatter = formatter(list_item=LIST_ITEM)
-        self._is_first = True
+        self.is_first = True
         self.tabs = tab * tab_width
 
     def write(self, obj):
@@ -155,14 +164,15 @@ class PrettyPrinter(object):
         value = obj
         if formatting.formatter and not no_formatting:
             value = formatting.formatter.format(obj)
-        if self._is_first:
+        color = formatting.get_color(value)
+        if self.is_first and level == 0:
             self.write(formatter(list_item='').format(
-                value, indent='', color=formatting.color))
-            self._is_first = False
+                value, indent='', color=color))
+            self.is_first = False
         else:
             self.write(
                 self.formatter.format(
-                    value, indent=(self.tabs * level), color=formatting.color))
+                    value, indent=(self.tabs * level), color=color))
 
     def __str__(self):
         return self.writer.getvalue()
@@ -173,17 +183,27 @@ class PrettyPrinter(object):
         for item in rfilter(formatting.rfilter, parent, sequence):
             if formatting.formatter:
                 self.writerow(item, formatting, level)
+            if formatting.formattings:
+                self.pprint(item, formatting.formattings, level + 1)
             if formatting.is_recursive:
                 self.rpprint(item, sequence, formatting, level + 1)
 
     def pprint(self, model, formattings, level):
+        if level >= MAX_DEPTH:
+            return
         for formatting in formattings:
+            increment = 0 if self.is_first else 1
             if formatting.attr_name:
                 attr_value = get_attr(model, formatting.attr_name)
                 if formatting.is_sequence:
                     self.writerow(formatting.attr_name, formatting, level, no_formatting=True)
-                    self.rpprint(model, attr_value, formatting, level + 1)
+                    self.rpprint(model, attr_value, formatting, level + increment)
                 else:
                     self.writerow(attr_value, formatting, level)
             else:
-                self.writerow(model, formatting, level)
+                if formatting.is_sequence:
+                    self.writerow(model.__class__.__name__,
+                                  formatting, level, no_formatting=True)
+                    self.rpprint(None, model, formatting, level)
+                else:
+                    self.writerow(model, formatting, level)
