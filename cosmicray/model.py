@@ -2,6 +2,7 @@
 import collections
 import inspect
 import importlib
+import time
 
 
 class Model(object):
@@ -118,18 +119,29 @@ class Model(object):
 
 class ModelAttribute(object):
     '''
-    :param model_cls_name: Class name for the related model
-    :param route: instance of ``cosmicray.Route``
+    :param model_cls_name: Class name for the related model. If both route and model class are provided, the
+        route will take precedence.
+    :param route: instance of ``cosmicray.Route``. If both route and model class are provided, the
+        route will take precedence.
     :params urlargs: URL formatting parameters as dict object
     :param params: URL query parameters as dict object
     :param is_sequence: Specify True if attribute is a list of Models, False otherwise
-    :params get_create_payload: Callable, accepts instance of ``cosmicray.Model`` as its only
+    :param get_create_payload: Callable, accepts instance of ``cosmicray.Model`` as its only
         argument and returns POST request payload arguments
-    :params get_update_payload: Callable, accepts instance of ``cosmicray.Model`` as its only
+    :param get_update_payload: Callable, accepts instance of ``cosmicray.Model`` as its only
         argument and returns PUT request payload arguments
+    :param get: Overrides ``GET`` request. Callable which accepts two arguments, ``model_ref`` and ``model_obj``, where ``model_ref`` is an instance of the class that the model attribute belongs to. And ``model_obj`` is an instance of ``ModelInstanceAttribute``, in other words, the related model object or response from the request
+    :param create:  Overrides ``POST`` request. Callable which accepts two arguments, ``model_ref`` and ``model_obj``, where ``model_ref`` is an instance of the class that the model attribute belongs to. And ``model_obj`` is an instance of ``ModelInstanceAttribute``, in other words, the related model object or response from the request
+    :param update: Overrides ``PUT`` request. Callable which accepts two arguments, ``model_ref`` and ``model_obj``, where ``model_ref`` is an instance of the class that the model attribute belongs to. And ``model_obj`` is an instance of ``ModelInstanceAttribute``, in other words, the related model object or response from the request
+    :param delete: Overrides ``DELETE`` request. Callable which accepts two arguments, ``model_ref`` and ``model_obj``, where ``model_ref`` is an instance of the class that the model attribute belongs to. And ``model_obj`` is an instance of ``ModelInstanceAttribute``, in other words, the related model object or response from the request
+    :param ttl: Timeout in seconds for how long to cache result of a request. Default: None, never expire
+    :param is_static: Specify if attribute can be accessed like a class attribute
+
     '''
     def __init__(self, model_cls_name, route, urlargs, params, is_sequence,
-                 get_create_payload, get_update_payload):
+                 get_create_payload, get_update_payload,
+                 get=None, create=None, update=None, delete=None, ttl=None,
+                 is_static=False, lazy=False):
         self.model_cls_name = model_cls_name
         self.route = route
         self.urlargs = urlargs or {}
@@ -137,14 +149,28 @@ class ModelAttribute(object):
         self.is_sequence = is_sequence
         self.get_update_payload = get_update_payload
         self.get_create_payload = get_create_payload
+        self.get_method = get
+        self.create_method = create
+        self.update_method = update
+        self.delete_method = delete
+        self.ttl = ttl
+        self.is_static = is_static
+        self.lazy = lazy
+        self._static = None
 
-    def getter(self, model_ref):
+    def __get__(self, model_ref, model_cls):
+        if self.is_static:
+            return self.get_static_model_instance_attribute(model_cls).getter()
         return self._get_model_instance_attribute(model_ref).getter()
 
-    def setter(self, model_ref, obj):
+    def __set__(self, model_ref, value):
+        if self.is_static:
+            raise AttributeError('Cannot set static attribute')
         return self._get_model_instance_attribute(model_ref).setter(obj)
 
-    def deleter(self, model_ref):
+    def __delete__(self, model_ref):
+        if self.is_static:
+            raise AttributeError('Cannot delete static attribute')
         return self._get_model_instance_attribute(model_ref).deleter()
 
     def _get_model_instance_attribute(self, model_ref):
@@ -153,15 +179,25 @@ class ModelAttribute(object):
                 model_attr=self, model_ref=model_ref)
         return model_ref.__model_attr__[self]
 
+    def get_static_model_instance_attribute(self, model_cls):
+        if self._static is None:
+            self._static = ModelInstanceAttribute(model_attr=self, model_ref=model_cls)
+        return self._static
+
     def __repr__(self):
         return '<{} for {}>'.format(self.__class__.__name__, self.model_cls_name)
 
 
 class ModelInstanceAttribute(object):
+    '''
+    :param model_attr: Instance of ``cosmicray.model.ModelAttribute``
+    :param model_ref: Instance of sub-class of``cosmicray.model.Model``
+    '''
     def __init__(self, model_attr, model_ref):
         self.model_attr = model_attr
         self.model_ref = model_ref
         self.model_obj = None
+        self._fetched_on = None
 
     @property
     def model_cls(self):
@@ -169,6 +205,14 @@ class ModelInstanceAttribute(object):
             module_name, _, classname = self.model_attr.model_cls_name.rpartition('.')
             module = importlib.import_module(module_name)
             return getattr(module, classname)
+
+    @property
+    def route(self):
+        return self.model_attr.route
+
+    @property
+    def value(self):
+        return self.model_obj
 
     def __nonzero__(self):
         return self.model_obj is not None
@@ -191,15 +235,18 @@ class ModelInstanceAttribute(object):
     def __next__(self):
         return self.model_obj.__next__()
 
-    @property
-    def value(self):
-        return self.model_obj
-
     def clear(self):
         self.model_obj = None
 
+    def clear_if_expired(self):
+        if self.expired():
+            self.clear()
+
     def getter(self):
-        self.get()
+        if not self.model_attr.lazy:
+            self.clear_if_expired()
+            if self.model_obj is None:
+                self.get()
         return self
 
     def setter(self, obj):
@@ -210,61 +257,81 @@ class ModelInstanceAttribute(object):
 
     def __call__(self, **kwargs):
         urlargs = {}
-        for urlarg, param in self.model_attr.urlargs.items():
+        for name, param in self.model_attr.urlargs.items():
             if isinstance(param, ModelParam):
-                urlargs[urlarg] = param.validate(getattr(self.model_ref, param.name))
+                urlargs[name] = param.validate(getattr(self.model_ref, param.name))
             else:
-                urlargs[urlarg] = param
+                urlargs[name] = param
+        params = {}
+        for name, param in self.model_attr.params.items():
+            if isinstance(param, ModelParam):
+                params[name] = param.validate(getattr(self.model_ref, param.name))
+            else:
+                params[name] = param
+
         if self.model_attr.route:
-            return self.model_attr.route(model_cls=self.model_cls, urlargs=urlargs, **kwargs)
-        return self.model_cls()(**kwargs).set_urlargs(urlargs)
+            request = self.model_attr.route(
+                model_cls=self.model_cls, urlargs=urlargs, params=params)
+        else:
+            request = self.model_cls()(urlargs=urlargs, params=params)
+        request.update(**kwargs)
+        return request
+
+    def expired(self):
+        return (self.model_attr.ttl
+                and self._fetched_on and (
+                    (time.time() - self._fetched_on) > self.model_attr.ttl))
 
     def get(self):
-        if self.model_obj is None:
+        if self.model_attr.get_method:
+            self.model_obj = self._as_sequence(
+                self.model_attr.get_method(self.model_ref, self))
+        else:
             self.model_obj = self._as_sequence(self().get())
+        self._fetched_on = time.time()
         return self.model_obj
 
     def update(self):
-        success = True
-        try:
-            if self.model_attr.get_update_payload is None:
-                return self._as_sequence(self.model_obj.update())
+        if self.model_attr.update_method:
             return self._as_sequence(
-                self(**self.model_attr.get_update_payload(self.model_ref)).put())
-        except:
-            success = False
-            raise
-        finally:
-            if success:
-                self.model_obj = None
+                self.model_attr.update_method(self.model_ref, self))
+        if self.model_attr.get_update_payload is None:
+            return self._as_sequence(self.model_obj.update())
+        return self._as_sequence(
+            self(**self.model_attr.get_update_payload(self.model_ref)).put())
 
     def create(self):
-        success = True
-        try:
-            if self.model_attr.get_create_payload is None:
-                return self._as_sequence(self.model_obj.create())
+        if self.model_attr.create_method:
             return self._as_sequence(
-                self(**self.model_attr.get_create_payload(self.model_ref)).post())
-        except:
-            success = False
-            raise
-        finally:
-            if success:
-                self.model_obj = None
+                self.model_attr.create_method(self.model_ref, self))
+        if self.model_attr.get_create_payload is None:
+            return self._as_sequence(self.model_obj.create())
+        return self._as_sequence(
+            self(**self.model_attr.get_create_payload(self.model_ref)).post())
 
     def delete(self):
+        if self.model_attr.delete_method:
+            return self._as_sequence(
+                self.model_attr.delete_method(self.model_ref, self))
         return self().delete()
 
     def _as_sequence(self, result):
         return list(result) if self.model_attr.is_sequence else result
 
     def __repr__(self):
-        return '<ModelInstanceAttribute for {}>'.format(repr(self.model_obj))
+        return repr(self.model_obj)
+
+    def __str__(self):
+        return str(self.model_obj)
 
 
-def relationship(model_cls=None, route=None, urlargs=None, params=None, is_sequence=False,
-                 get_create_payload=None, get_update_payload=None):
-    '''Returns property with a getter, setter, and deleter method'''
+def relationship(
+        model_cls=None, route=None, urlargs=None, params=None,
+        is_sequence=False,
+        get_create_payload=None, get_update_payload=None,
+        get=None, create=None, update=None, delete=None,
+        ttl=None, is_static=False, lazy=False):
+    '''Returns property-like object with a getter, setter, and deleter method'''
     if model_cls is None and route is None:
         raise ValueError("model_cls and route cannot both be None")
     frame = inspect.stack()[1]
@@ -272,10 +339,9 @@ def relationship(model_cls=None, route=None, urlargs=None, params=None, is_seque
     model_cls_name = '{}.{}'.format(module_name, model_cls)
     model_attr = ModelAttribute(
         model_cls_name, route, urlargs, params, is_sequence,
-        get_create_payload, get_update_payload)
-    doc = '<ModelAttribute for {}>'.format(
-        model_cls.__class__.__name__ if model_cls else route.path)
-    return property(model_attr.getter, model_attr.setter, model_attr.deleter, doc)
+        get_create_payload, get_update_payload,
+        get, create, update, delete, ttl, is_static, lazy)
+    return model_attr
 
 
 class ModelParam(object):
