@@ -33,6 +33,7 @@ class Cosmicray(object):
         self.routes = []
         self.config = util.Config({
             'debug': False,
+            'raise_for_status': True,
             'disable_validation': False,
             'home_dir': util.create_home_dir(name, root_path=home_dir)
         })
@@ -266,10 +267,8 @@ class Request(util.RequestTemplate):
             data=self.data, files=self.files, json=self.json,
             auth=self.auth, **self.extra)
         self._log(response)
-        try:
+        if self.route.get_config('raise_for_status'):
             response.raise_for_status()
-        except Exception as error:
-            raise error
         return self.handle_response(response)
 
     def get(self):
