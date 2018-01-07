@@ -174,6 +174,9 @@ class Config(object):
         '''Set default value for a key if it doesn't exist'''
         return self._config.setdefault(key.lower(), default)
 
+    def keys(self):
+        return self._config.keys()
+
     def getcopy(self, key, default=None):
         '''Returns a copy of the value for the given key or default if key not found'''
         return copy.deepcopy(self.get(key, default))
