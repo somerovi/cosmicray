@@ -207,3 +207,5 @@ class PrettyPrinter(object):
                     self.rpprint(None, model, formatting, level)
                 else:
                     self.writerow(model, formatting, level)
+                    if formatting.formattings:
+                        self.pprint(model, formatting.formattings, level)
