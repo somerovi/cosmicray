@@ -37,7 +37,7 @@ class Cosmicray(object):
             'disable_validation': False,
             'home_dir': util.create_home_dir(name, root_path=home_dir)
         })
-        self.config['cache_filename'] = self.home_dir('cache')
+        self.config['config_filename'] = self.home_dir('config')
         self.tpl = util.RequestTemplate(
             domain=domain, headers={'User-Agent': self.name})
         self.session = requests.Session()
@@ -45,6 +45,12 @@ class Cosmicray(object):
     def home_dir(self, *args):
         '''Returns home directory path joined with the given argument sequence'''
         return os.path.join(self.config['home_dir'], *args)
+
+    def cache_dir(self, *args):
+        path = self.home_dir('cache')
+        if not os.path.exists(path):
+            os.makedirs(path)
+        return os.path.join(path, *args)
 
     def route(self, path, methods, params=None, urlargs=None, headers=None):
         '''
@@ -94,7 +100,10 @@ class Cosmicray(object):
             try:
                 return self.config[key]
             except KeyError:
-                return self.tpl.extra[key]
+                try:
+                    return self.tpl.extra[key]
+                except KeyError:
+                    pass
 
     def store_configurations(self):
         ''''Save config to file'''
@@ -104,11 +113,11 @@ class Cosmicray(object):
                 (k, v) for k, v in self.tpl.items() if k in STORE_ITEMS),
         }
         util.write_artifact_file(
-            self.get_config('cache_filename'), configs, json.dumps)
+            self.get_config('config_filename'), configs, json.dumps)
 
     def load_configurations(self):
         ''''Load config from file'''
-        fpath = self.get_config('cache_filename')
+        fpath = self.get_config('config_filename')
         if os.path.exists(fpath):
             configs = util.read_artifact_file(fpath, json.loads)
             self.config.update(configs.get('config'))
@@ -195,11 +204,8 @@ class Request(util.RequestTemplate):
     def handle_response(self, response):
         '''Calls the routes response handler with the given response and maps the model to the given result'''
         expected_args = inspect.getargspec(self.route.response_handler).args
-        args = [arg == 'response' and response or
-                arg == 'context' and self
-                for arg in expected_args]
-        return self.map_model(
-            self.route.response_handler(*args))
+        args = [self, response] if len(expected_args) == 2 else [response]
+        return self.map_model(self.route.response_handler(*args))
 
     def map_model(self, response):
         '''Calls :class:`Request`.model_cls._make method if a model was provided, otherwise returns the given response'''
