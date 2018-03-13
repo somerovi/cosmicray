@@ -166,7 +166,7 @@ class ModelAttribute(object):
     def __set__(self, model_ref, value):
         if self.is_static:
             raise AttributeError('Cannot set static attribute')
-        return self._get_model_instance_attribute(model_ref).setter(obj)
+        return self._get_model_instance_attribute(model_ref).setter(value)
 
     def __delete__(self, model_ref):
         if self.is_static:
@@ -273,7 +273,9 @@ class ModelInstanceAttribute(object):
             request = self.model_attr.route(
                 model_cls=self.model_cls, urlargs=urlargs, params=params)
         else:
-            request = self.model_cls()(urlargs=urlargs, params=params)
+            request = self.model_cls()()\
+                          .set_urlargs(urlargs)\
+                          .set_params(params)
         request.update(**kwargs)
         return request
 
