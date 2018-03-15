@@ -196,7 +196,7 @@ class ModelInstanceAttribute(object):
     def __init__(self, model_attr, model_ref):
         self.model_attr = model_attr
         self.model_ref = model_ref
-        self.model_obj = None
+        self.value = None
         self._fetched_on = None
 
     @property
@@ -210,33 +210,32 @@ class ModelInstanceAttribute(object):
     def route(self):
         return self.model_attr.route
 
-    @property
-    def value(self):
-        return self.model_obj
-
     def __nonzero__(self):
-        return self.model_obj is not None
+        return self.value is not None
 
     def __getattr__(self, attr):
-        return getattr(self.model_obj, attr)
+        return getattr(self.value, attr)
 
     def __getitem__(self, name):
-        return self.model_obj.__getitem__(name)
+        return self.value.__getitem__(name)
 
     def __setitem__(self, name, value):
-        return self.model_obj.__setitem__(name, value)
+        return self.value.__setitem__(name, value)
 
     def __delitem__(self, name):
-        return self.model_obj.__delitem__(name)
+        return self.value.__delitem__(name)
 
     def __iter__(self):
-        return self.model_obj.__iter__()
+        return self.value.__iter__()
 
     def __next__(self):
-        return self.model_obj.__next__()
+        return self.value.__next__()
+
+    def __len__(self):
+        return self.value.__len__()
 
     def clear(self):
-        self.model_obj = None
+        self.value = None
 
     def clear_if_expired(self):
         if self.expired():
@@ -245,12 +244,12 @@ class ModelInstanceAttribute(object):
     def getter(self):
         if not self.model_attr.lazy:
             self.clear_if_expired()
-            if self.model_obj is None:
+            if self.value is None:
                 self.get()
         return self
 
     def setter(self, obj):
-        self.model_obj = obj
+        self.value = obj
 
     def deleter(self):
         self.clear()
@@ -286,19 +285,19 @@ class ModelInstanceAttribute(object):
 
     def get(self):
         if self.model_attr.get_method:
-            self.model_obj = self._as_sequence(
+            self.value = self._as_sequence(
                 self.model_attr.get_method(self.model_ref, self))
         else:
-            self.model_obj = self._as_sequence(self().get())
+            self.value = self._as_sequence(self().get())
         self._fetched_on = time.time()
-        return self.model_obj
+        return self.value
 
     def update(self):
         if self.model_attr.update_method:
             return self._as_sequence(
                 self.model_attr.update_method(self.model_ref, self))
         if self.model_attr.get_update_payload is None:
-            return self._as_sequence(self.model_obj.update())
+            return self._as_sequence(self.value.update())
         return self._as_sequence(
             self(**self.model_attr.get_update_payload(self.model_ref)).put())
 
@@ -307,7 +306,7 @@ class ModelInstanceAttribute(object):
             return self._as_sequence(
                 self.model_attr.create_method(self.model_ref, self))
         if self.model_attr.get_create_payload is None:
-            return self._as_sequence(self.model_obj.create())
+            return self._as_sequence(self.value.create())
         return self._as_sequence(
             self(**self.model_attr.get_create_payload(self.model_ref)).post())
 
@@ -321,10 +320,10 @@ class ModelInstanceAttribute(object):
         return list(result) if self.model_attr.is_sequence else result
 
     def __repr__(self):
-        return repr(self.model_obj)
+        return repr(self.value)
 
     def __str__(self):
-        return str(self.model_obj)
+        return str(self.value)
 
 
 def relationship(

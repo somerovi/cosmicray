@@ -209,7 +209,7 @@ class Request(util.RequestTemplate):
 
     def map_model(self, response):
         '''Calls :class:`Request`.model_cls._make method if a model was provided, otherwise returns the given response'''
-        if self.model_cls is not None:
+        if self.model_cls is not None and response is not None:
             _make = getattr(self.model_cls, '_make')
             try:
                 return _make(response)
