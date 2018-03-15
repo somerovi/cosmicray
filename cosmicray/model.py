@@ -317,7 +317,7 @@ class ModelInstanceAttribute(object):
         return self().delete()
 
     def _as_sequence(self, result):
-        return list(result) if self.model_attr.is_sequence else result
+        return list(result) if result and self.model_attr.is_sequence else result
 
     def __repr__(self):
         return repr(self.value)
