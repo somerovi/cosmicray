@@ -49,8 +49,11 @@ class Model(object):
 
     dict = property(get_dict, set_dict, doc='Getter and setter from dict object')
 
-    def __nonzero__(self):
+    def __bool__(self):
         return any(value is not None for _, value in self.items())
+
+    def __nonzero__(self):
+        return self.__bool__()
 
     def track_changes(self, field, new_value):
         '''Tracks which fields have updated values'''
@@ -210,8 +213,11 @@ class ModelInstanceAttribute(object):
     def route(self):
         return self.model_attr.route
 
-    def __nonzero__(self):
+    def __bool__(self):
         return self.value is not None
+
+    def __nonzero__(self):
+        return self.__bool__()
 
     def __getattr__(self, attr):
         return getattr(self.value, attr)
